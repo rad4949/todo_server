@@ -5,59 +5,70 @@ import (
 	"todo_server/models"
 )
 
+// перенести залежності в окремий пакет
 type TodoService struct {
-	todos  []models.Todo
+	todos  map[int]models.Todo
 	nextID int
 }
 
+// передавати репо в конструктор
 func NewTodoService() *TodoService {
 	return &TodoService{
-		todos:  []models.Todo{},
+		todos:  make(map[int]models.Todo),
 		nextID: 1,
 	}
 }
 
-func (s *TodoService) GetAll() []models.Todo {
+func (s *TodoService) GetAll() map[int]models.Todo {
 	return s.todos
 }
 
 func (s *TodoService) GetByID(id int) (*models.Todo, error) {
-	for i := range s.todos {
-		if s.todos[i].ID == id {
-			return &s.todos[i], nil
-		}
+	todo, ok := s.todos[id]
+	if !ok {
+		return nil, errors.New("todo not found")
 	}
-	return nil, errors.New("todo not found")
+	return &todo, nil
 }
 
-func (s *TodoService) Create(title string) models.Todo {
+func (s *TodoService) Create(title string) (models.Todo, error) {
+	id := s.nextID
+	if _, exist := s.todos[id]; exist {
+		return models.Todo{}, errors.New("todo with this ID already exists")
+	}
+
 	todo := models.Todo{
-		ID:        s.nextID,
+		ID:        id,
 		Title:     title,
 		Completed: false,
 	}
-	s.todos = append(s.todos, todo)
+
+	s.todos[id] = todo
 	s.nextID++
-	return todo
+
+	return todo, nil
 }
 
 func (s *TodoService) Update(id int, title string, completed bool) (*models.Todo, error) {
-	for i := range s.todos {
-		if s.todos[i].ID == id {
-			s.todos[i].Title = title
-			s.todos[i].Completed = completed
-			return &s.todos[i], nil
-		}
+	todo, exist := s.todos[id]
+	if !exist {
+		return nil, errors.New("todo not found")
 	}
-	return nil, errors.New("todo not found")
+
+	todo.Title = title
+	todo.Completed = completed
+
+	s.todos[id] = todo
+
+	return &todo, nil
 }
 
 func (s *TodoService) Delete(id int) error {
-	for i := range s.todos {
-		if s.todos[i].ID == id {
-			s.todos = append(s.todos[:i], s.todos[i+1:]...)
-			return nil
-		}
+	if _, exist := s.todos[id]; !exist {
+		return errors.New("todo not found")
 	}
-	return errors.New("todo not found")
+
+	delete(s.todos, id)
+
+	return nil
 }

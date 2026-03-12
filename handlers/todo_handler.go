@@ -64,7 +64,7 @@ func (h *TodoHandler) Todos(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		todo := h.Service.Create(req.Title)
+		todo, _ := h.Service.Create(req.Title)
 		writeJSON(w, http.StatusCreated, todo)
 
 	default:
