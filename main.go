@@ -4,11 +4,13 @@ import (
 	"fmt"
 	"net/http"
 	"todo_server/handlers"
+	"todo_server/repositories"
 	"todo_server/services"
 )
 
 func main() {
-	todoService := services.NewTodoService()
+	todoRepo := repositories.NewInMemoryTodoRepository()
+	todoService := services.NewTodoService(todoRepo)
 	todoHandler := handlers.NewTodoHandler(todoService)
 
 	http.HandleFunc("/", todoHandler.Hello)

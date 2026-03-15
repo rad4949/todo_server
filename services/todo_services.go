@@ -1,74 +1,36 @@
 package services
 
 import (
-	"errors"
 	"todo_server/models"
+	"todo_server/repositories"
 )
 
-// перенести залежності в окремий пакет
 type TodoService struct {
-	todos  map[int]models.Todo
-	nextID int
+	repo repositories.TodoRepository
 }
 
-// передавати репо в конструктор
-func NewTodoService() *TodoService {
+func NewTodoService(repo repositories.TodoRepository) *TodoService {
 	return &TodoService{
-		todos:  make(map[int]models.Todo),
-		nextID: 1,
+		repo: repo,
 	}
 }
 
-func (s *TodoService) GetAll() map[int]models.Todo {
-	return s.todos
+func (s *TodoService) GetAll() []models.Todo {
+	return s.repo.GetAll()
 }
 
 func (s *TodoService) GetByID(id int) (*models.Todo, error) {
-	todo, ok := s.todos[id]
-	if !ok {
-		return nil, errors.New("todo not found")
-	}
-	return &todo, nil
+	return s.repo.GetByID(id)
 }
 
 func (s *TodoService) Create(title string) (models.Todo, error) {
-	id := s.nextID
-	if _, exist := s.todos[id]; exist {
-		return models.Todo{}, errors.New("todo with this ID already exists")
-	}
-
-	todo := models.Todo{
-		ID:        id,
-		Title:     title,
-		Completed: false,
-	}
-
-	s.todos[id] = todo
-	s.nextID++
-
-	return todo, nil
+	return s.repo.Create(title)
 }
 
 func (s *TodoService) Update(id int, title string, completed bool) (*models.Todo, error) {
-	todo, exist := s.todos[id]
-	if !exist {
-		return nil, errors.New("todo not found")
-	}
-
-	todo.Title = title
-	todo.Completed = completed
-
-	s.todos[id] = todo
-
-	return &todo, nil
+	return s.repo.Update(id, title, completed)
 }
 
 func (s *TodoService) Delete(id int) error {
-	if _, exist := s.todos[id]; !exist {
-		return errors.New("todo not found")
-	}
-
-	delete(s.todos, id)
-
-	return nil
+	return s.repo.Delete(id)
 }
