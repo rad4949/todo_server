@@ -2,8 +2,8 @@ package handlers
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
-	"strconv"
 	"strings"
 	"todo_server/services"
 )
@@ -37,9 +37,12 @@ func writeError(w http.ResponseWriter, status int, message string) {
 	})
 }
 
-func getIDFromPath(path string) (int, error) {
-	idStr := strings.TrimPrefix(path, "/todos/")
-	return strconv.Atoi(idStr)
+func getIDFromPath(path string) (string, error) {
+	id := strings.TrimPrefix(path, "/todos/")
+	if id == "" {
+		return "", errors.New("invalid todo id")
+	}
+	return id, nil
 }
 
 // Hello godoc
@@ -107,7 +110,7 @@ func (h *TodoHandler) CreateTodo(w http.ResponseWriter, r *http.Request) {
 // @Description Get single todo item
 // @Tags todos
 // @Produce json
-// @Param id path int true "Todo ID"
+// @Param id path string true "Todo ID (UUID)"
 // @Success 200 {object} models.Todo
 // @Failure 400 {object} map[string]string
 // @Failure 404 {object} map[string]string
@@ -134,7 +137,7 @@ func (h *TodoHandler) GetTodoByID(w http.ResponseWriter, r *http.Request) {
 // @Tags todos
 // @Accept json
 // @Produce json
-// @Param id path int true "Todo ID"
+// @Param id path string true "Todo ID (UUID)"
 // @Param todo body UpdateTodoRequest true "Updated todo data"
 // @Success 200 {object} models.Todo
 // @Failure 400 {object} map[string]string
@@ -175,7 +178,7 @@ func (h *TodoHandler) UpdateTodo(w http.ResponseWriter, r *http.Request) {
 // @Description Delete todo by ID
 // @Tags todos
 // @Produce json
-// @Param id path int true "Todo ID"
+// @Param id path string true "Todo ID (UUID)"
 // @Success 200 {object} map[string]string
 // @Failure 400 {object} map[string]string
 // @Failure 404 {object} map[string]string

@@ -117,8 +117,8 @@
                 "summary": "Get todo by ID",
                 "parameters": [
                     {
-                        "type": "integer",
-                        "description": "Todo ID",
+                        "type": "string",
+                        "description": "Todo ID (UUID)",
                         "name": "id",
                         "in": "path",
                         "required": true
@@ -165,8 +165,8 @@
                 "summary": "Update todo",
                 "parameters": [
                     {
-                        "type": "integer",
-                        "description": "Todo ID",
+                        "type": "string",
+                        "description": "Todo ID (UUID)",
                         "name": "id",
                         "in": "path",
                         "required": true
@@ -219,8 +219,8 @@
                 "summary": "Delete todo",
                 "parameters": [
                     {
-                        "type": "integer",
-                        "description": "Todo ID",
+                        "type": "string",
+                        "description": "Todo ID (UUID)",
                         "name": "id",
                         "in": "path",
                         "required": true
@@ -285,7 +285,7 @@
                     "type": "boolean"
                 },
                 "id": {
-                    "type": "integer"
+                    "type": "string"
                 },
                 "title": {
                     "type": "string"

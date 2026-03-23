@@ -123,8 +123,8 @@ const docTemplate = `{
                 "summary": "Get todo by ID",
                 "parameters": [
                     {
-                        "type": "integer",
-                        "description": "Todo ID",
+                        "type": "string",
+                        "description": "Todo ID (UUID)",
                         "name": "id",
                         "in": "path",
                         "required": true
@@ -171,8 +171,8 @@ const docTemplate = `{
                 "summary": "Update todo",
                 "parameters": [
                     {
-                        "type": "integer",
-                        "description": "Todo ID",
+                        "type": "string",
+                        "description": "Todo ID (UUID)",
                         "name": "id",
                         "in": "path",
                         "required": true
@@ -225,8 +225,8 @@ const docTemplate = `{
                 "summary": "Delete todo",
                 "parameters": [
                     {
-                        "type": "integer",
-                        "description": "Todo ID",
+                        "type": "string",
+                        "description": "Todo ID (UUID)",
                         "name": "id",
                         "in": "path",
                         "required": true
@@ -291,7 +291,7 @@ const docTemplate = `{
                     "type": "boolean"
                 },
                 "id": {
-                    "type": "integer"
+                    "type": "string"
                 },
                 "title": {
                     "type": "string"

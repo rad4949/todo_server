@@ -17,7 +17,7 @@ definitions:
       completed:
         type: boolean
       id:
-        type: integer
+        type: string
       title:
         type: string
     type: object
@@ -95,11 +95,11 @@ paths:
     delete:
       description: Delete todo by ID
       parameters:
-      - description: Todo ID
+      - description: Todo ID (UUID)
         in: path
         name: id
         required: true
-        type: integer
+        type: string
       produces:
       - application/json
       responses:
@@ -127,11 +127,11 @@ paths:
     get:
       description: Get single todo item
       parameters:
-      - description: Todo ID
+      - description: Todo ID (UUID)
         in: path
         name: id
         required: true
-        type: integer
+        type: string
       produces:
       - application/json
       responses:
@@ -159,11 +159,11 @@ paths:
       - application/json
       description: Update todo title or status
       parameters:
-      - description: Todo ID
+      - description: Todo ID (UUID)
         in: path
         name: id
         required: true
-        type: integer
+        type: string
       - description: Updated todo data
         in: body
         name: todo
