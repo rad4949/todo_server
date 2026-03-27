@@ -1,15 +1,18 @@
 package main
 
 import (
+	"database/sql"
 	"fmt"
 	"net/http"
+
+	_ "github.com/lib/pq"
+	httpSwagger "github.com/swaggo/http-swagger"
+
+	"todo_server/config"
+	_ "todo_server/docs"
 	"todo_server/handlers"
 	"todo_server/repositories"
 	"todo_server/services"
-
-	_ "todo_server/docs"
-
-	httpSwagger "github.com/swaggo/http-swagger"
 )
 
 // @title Todo API
@@ -18,6 +21,32 @@ import (
 // @host localhost:8080
 // @BasePath /
 func main() {
+
+	cfg := config.Load()
+	addr := ":" + cfg.ServerPort
+	connStr := fmt.Sprintf(
+		"host=%s port=%s user=%s password=%s dbname=%s sslmode=%s",
+		cfg.DBHost,
+		cfg.DBPort,
+		cfg.DBUser,
+		cfg.DBPassword,
+		cfg.DBName,
+		cfg.DBSSLMode,
+	)
+
+	db, err := sql.Open("postgres", connStr)
+	if err != nil {
+		panic(err)
+	}
+	defer db.Close()
+
+	err = db.Ping()
+	if err != nil {
+		panic(err)
+	}
+
+	fmt.Println("Connected to PostgreSQL")
+
 	todoRepo := repositories.NewInMemoryTodoRepository()
 	todoService := services.NewTodoService(todoRepo)
 	todoHandler := handlers.NewTodoHandler(todoService)
@@ -54,9 +83,9 @@ func main() {
 
 	http.Handle("/swagger/", httpSwagger.WrapHandler)
 
-	fmt.Println("Server started on :8080")
+	fmt.Println("Server started on", addr)
+	err = http.ListenAndServe(addr, nil)
 
-	err := http.ListenAndServe(":8080", nil)
 	if err != nil {
 		panic(err)
 	}
