@@ -22,7 +22,10 @@ import (
 // @BasePath /
 func main() {
 
-	cfg := config.Load()
+	cfg, err := config.Load()
+	if err != nil {
+		panic(err)
+	}
 	addr := ":" + cfg.ServerPort
 	connStr := fmt.Sprintf(
 		"host=%s port=%s user=%s password=%s dbname=%s sslmode=%s",
@@ -47,7 +50,7 @@ func main() {
 
 	fmt.Println("Connected to PostgreSQL")
 
-	todoRepo := repositories.NewInMemoryTodoRepository()
+	todoRepo := repositories.NewPostgresTodoRepository(db)
 	todoService := services.NewTodoService(todoRepo)
 	todoHandler := handlers.NewTodoHandler(todoService)
 

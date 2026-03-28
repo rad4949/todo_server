@@ -3,31 +3,31 @@ package config
 import (
 	"os"
 
+	"github.com/caarlos0/env/v11"
 	"github.com/joho/godotenv"
 )
 
 type Config struct {
-	ServerPort string
-	DBHost     string
-	DBPort     string
-	DBUser     string
-	DBPassword string
-	DBName     string
-	DBSSLMode  string
+	ServerPort string `env:"SERVER_PORT" envDefault:"8080"`
+
+	DBHost     string `env:"DB_HOST" envDefault:"localhost"`
+	DBPort     string `env:"DB_PORT" envDefault:"5432"`
+	DBUser     string `env:"DB_USER,required"`
+	DBPassword string `env:"DB_PASSWORD,required"`
+	DBName     string `env:"DB_NAME" envDefault:"todo"`
+	DBSSLMode  string `env:"DB_SSLMODE" envDefault:"disable"`
 }
 
-func Load() *Config {
+func Load() (*Config, error) {
 	_ = godotenv.Load()
 
-	return &Config{
-		ServerPort: getEnv("SERVER_PORT", "8080"),
-		DBHost:     getEnv("DB_HOST", "localhost"),
-		DBPort:     getEnv("DB_PORT", "5432"),
-		DBUser:     getEnv("DB_USER", "postgres"),
-		DBPassword: getEnv("DB_PASSWORD", ""),
-		DBName:     getEnv("DB_NAME", "todo"),
-		DBSSLMode:  getEnv("DB_SSLMODE", "disable"),
+	cfg := Config{}
+
+	if err := env.Parse(&cfg); err != nil {
+		return nil, err
 	}
+
+	return &cfg, nil
 }
 
 func getEnv(key, defaultValue string) string {
