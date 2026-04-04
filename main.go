@@ -10,9 +10,9 @@ import (
 
 	"todo_server/config"
 	_ "todo_server/docs"
-	"todo_server/handlers"
-	"todo_server/repositories"
-	"todo_server/services"
+	"todo_server/handler"
+	"todo_server/repository"
+	"todo_server/service"
 )
 
 // @title Todo API
@@ -26,6 +26,7 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+	fmt.Println(cfg.DBHost)
 	addr := ":" + cfg.ServerPort
 	connStr := fmt.Sprintf(
 		"host=%s port=%s user=%s password=%s dbname=%s sslmode=%s",
@@ -50,9 +51,9 @@ func main() {
 
 	fmt.Println("Connected to PostgreSQL")
 
-	todoRepo := repositories.NewPostgresTodoRepository(db)
-	todoService := services.NewTodoService(todoRepo)
-	todoHandler := handlers.NewTodoHandler(todoService)
+	todoRepo := repository.NewPostgresTodoRepository(db)
+	todoService := service.NewTodoService(todoRepo)
+	todoHandler := handler.NewTodoHandler(todoService)
 
 	http.HandleFunc("/", todoHandler.Hello)
 
