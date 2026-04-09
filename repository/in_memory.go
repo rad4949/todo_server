@@ -2,7 +2,6 @@ package repository
 
 import (
 	"errors"
-	"fmt"
 	"todo_server/model"
 
 	"github.com/google/uuid"
@@ -31,7 +30,7 @@ func (r *InMemoryTodoRepository) GetAll() []model.Todo {
 func (r *InMemoryTodoRepository) GetByID(id string) (*model.Todo, error) {
 	todo, exists := r.todos[id]
 	if !exists {
-		return nil, fmt.Errorf("todo with this ID not found: %w", exists)
+		return nil, errors.New("todo with this ID not found")
 	}
 
 	return &todo, nil
@@ -40,7 +39,7 @@ func (r *InMemoryTodoRepository) GetByID(id string) (*model.Todo, error) {
 func (r *InMemoryTodoRepository) Create(title string) (model.Todo, error) {
 	id := uuid.New().String()
 	if _, exist := r.todos[id]; exist {
-		return model.Todo{}, fmt.Errorf("todo with this ID already exists: %w", exist)
+		return model.Todo{}, errors.New("todo with this ID already exists")
 	}
 
 	todo := model.Todo{
@@ -57,7 +56,7 @@ func (r *InMemoryTodoRepository) Create(title string) (model.Todo, error) {
 func (r *InMemoryTodoRepository) Update(id string, title string, completed bool) (*model.Todo, error) {
 	todo, exists := r.todos[id]
 	if !exists {
-		return nil, fmt.Errorf("todo with this ID not found: %w", exists)
+		return nil, errors.New("todo with this ID not found")
 	}
 
 	todo.Title = title
@@ -70,7 +69,7 @@ func (r *InMemoryTodoRepository) Update(id string, title string, completed bool)
 
 func (r *InMemoryTodoRepository) Delete(id string) error {
 	if _, exist := r.todos[id]; !exist {
-		return fmt.Errorf("todo with this ID not found: %w", exist)
+		return errors.New("todo with this ID not found")
 	}
 
 	delete(r.todos, id)
