@@ -81,9 +81,9 @@ func (r *PostgresTodoRepository) GetByID(id string) (*model.Todo, error) {
 	err := r.db.QueryRow(query, id).Scan(&todo.ID, &todo.Title, &todo.Completed)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return nil, errors.New("todo not found")
+			return nil, fmt.Errorf("not found: %w", err)
 		}
-		return nil, errors.New("failed to get todo")
+		return nil, fmt.Errorf("failed to get todo: %w", err)
 	}
 
 	return &todo, nil
@@ -102,9 +102,9 @@ func (r *PostgresTodoRepository) Update(id string, title string, completed bool)
 	err := r.db.QueryRow(query, title, completed, id).Scan(&todo.ID, &todo.Title, &todo.Completed)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return nil, errors.New("todo not found")
+			return nil, fmt.Errorf("not found: %w", err)
 		}
-		return nil, errors.New("failed to update todo")
+		return nil, fmt.Errorf("failed to get todo: %w", err)
 	}
 
 	return &todo, nil
@@ -118,16 +118,16 @@ func (r *PostgresTodoRepository) Delete(id string) error {
 
 	result, err := r.db.Exec(query, id)
 	if err != nil {
-		return errors.New("failed to delete todo")
+		return fmt.Errorf("failed to delete todo: %w", err)
 	}
 
 	rowsAffected, err := result.RowsAffected()
 	if err != nil {
-		return errors.New("failed to check deleted rows")
+		return fmt.Errorf("failed to check deleted row: %w", err)
 	}
 
 	if rowsAffected == 0 {
-		return errors.New("todo not found")
+		fmt.Errorf("not found: %w", err)
 	}
 
 	return nil

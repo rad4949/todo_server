@@ -24,7 +24,7 @@ func main() {
 
 	cfg, err := config.Load()
 	if err != nil {
-		panic(err)
+		panic(fmt.Errorf("failed to load config: %w", err))
 	}
 	fmt.Println(cfg.DBHost)
 	addr := ":" + cfg.ServerPort
@@ -40,13 +40,13 @@ func main() {
 
 	db, err := sql.Open("postgres", connStr)
 	if err != nil {
-		panic(err)
+		panic(fmt.Errorf("failed to open DB: %w", err))
 	}
 	defer db.Close()
 
 	err = db.Ping()
 	if err != nil {
-		panic(err)
+		panic(fmt.Errorf("failed to ping DB: %w", err))
 	}
 
 	fmt.Println("Connected to PostgreSQL")
@@ -91,6 +91,6 @@ func main() {
 	err = http.ListenAndServe(addr, nil)
 
 	if err != nil {
-		panic(err)
+		panic(fmt.Errorf("server failed: %w", err))
 	}
 }
