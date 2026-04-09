@@ -2,13 +2,11 @@ package repository
 
 import (
 	"database/sql"
-	"errors"
 	"fmt"
 	"todo_server/model"
 
 	"github.com/google/uuid"
 )
-
 type PostgresTodoRepository struct {
 	db *sql.DB
 }

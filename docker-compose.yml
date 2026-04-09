@@ -19,6 +19,7 @@ services:
 
   app:
     build: .
+    image: todo_server-app:latest
     container_name: todo-app
     restart: always
     depends_on:
