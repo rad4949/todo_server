@@ -125,7 +125,7 @@ func (r *PostgresTodoRepository) Delete(id string) error {
 	}
 
 	if rowsAffected == 0 {
-		fmt.Errorf("not found: %w", err)
+		return fmt.Errorf("not found: %w", err)
 	}
 
 	return nil
