@@ -5,7 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"strings"
-	"todo_server/service"
+	"todo_server/internal/service"
 )
 
 type TodoHandler struct {

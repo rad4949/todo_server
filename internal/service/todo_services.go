@@ -2,7 +2,7 @@ package service
 
 import (
 	"todo_server/model"
-	"todo_server/repository"
+	"todo_server/internal/repository"
 )
 
 // test: unit, integration, e2e
