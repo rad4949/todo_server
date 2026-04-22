@@ -15,9 +15,9 @@ import (
  
 	"todo_server/config"
 	_ "todo_server/docs"
-	"todo_server/handler"
-	"todo_server/repository"
-	"todo_server/service"
+	"todo_server/internal/handler"
+	"todo_server/internal/repository"
+	"todo_server/internal/service"
 )
  
 // @title Todo API
