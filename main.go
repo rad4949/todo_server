@@ -1,33 +1,37 @@
 package main
-
+ 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"net/http"
-
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
+ 
 	_ "github.com/lib/pq"
 	httpSwagger "github.com/swaggo/http-swagger"
-
+ 
 	"todo_server/config"
 	_ "todo_server/docs"
 	"todo_server/handler"
 	"todo_server/repository"
 	"todo_server/service"
 )
-
+ 
 // @title Todo API
 // @version 1.0
 // @description Simple Todo API
 // @host localhost:8080
 // @BasePath /
 func main() {
-
+ 
 	cfg, err := config.Load()
 	if err != nil {
-		panic(fmt.Errorf("failed to load config: %w", err))
+		panic(err)
 	}
-	fmt.Println(cfg.DBHost)
-	addr := ":" + cfg.ServerPort
+ 
 	connStr := fmt.Sprintf(
 		"host=%s port=%s user=%s password=%s dbname=%s sslmode=%s",
 		cfg.DBHost,
@@ -55,9 +59,11 @@ func main() {
 	todoService := service.NewTodoService(todoRepo)
 	todoHandler := handler.NewTodoHandler(todoService)
 
-	http.HandleFunc("/", todoHandler.Hello)
-
-	http.HandleFunc("/todos", func(w http.ResponseWriter, r *http.Request) {
+	mux := http.NewServeMux()
+ 
+	mux.HandleFunc("/", todoHandler.Hello)
+ 
+	mux.HandleFunc("/todos", func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodGet:
 			todoHandler.GetTodos(w, r)
@@ -69,8 +75,8 @@ func main() {
 			w.Write([]byte(`{"error":"method not allowed"}`))
 		}
 	})
-
-	http.HandleFunc("/todos/", func(w http.ResponseWriter, r *http.Request) {
+ 
+	mux.HandleFunc("/todos/", func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodGet:
 			todoHandler.GetTodoByID(w, r)
@@ -84,13 +90,33 @@ func main() {
 			w.Write([]byte(`{"error":"method not allowed"}`))
 		}
 	})
-
-	http.Handle("/swagger/", httpSwagger.WrapHandler)
-
-	fmt.Println("Server started on", addr)
-	err = http.ListenAndServe(addr, nil)
-
-	if err != nil {
-		panic(fmt.Errorf("server failed: %w", err))
+ 
+	mux.Handle("/swagger/", httpSwagger.WrapHandler)
+ 
+	server := &http.Server{
+		Addr:    ":" + cfg.ServerPort,
+		Handler: mux,
 	}
+ 
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+ 
+	go func() {
+		fmt.Println("Server started on :" + cfg.ServerPort)
+		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			panic(err)
+		}
+	}()
+ 
+	<-quit
+	fmt.Println("Shutting down server...")
+ 
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+ 
+	if err := server.Shutdown(ctx); err != nil {
+		fmt.Println("Server forced to shutdown:", err)
+	}
+ 
+	fmt.Println("Server stopped gracefully")
 }
