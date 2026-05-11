@@ -9,16 +9,18 @@ import (
 	"os/signal"
 	"syscall"
 	"time"
- 
+
 	_ "github.com/lib/pq"
 	httpSwagger "github.com/swaggo/http-swagger"
- 
+
 	"todo_server/config"
 	_ "todo_server/docs"
 	"todo_server/internal/handler"
+	"todo_server/internal/middleware"
 	"todo_server/internal/repository"
 	"todo_server/internal/service"
 )
+
  
 // @title Todo API
 // @version 1.0
@@ -62,7 +64,7 @@ func main() {
 	mux := http.NewServeMux()
  
 	mux.HandleFunc("/", todoHandler.Hello)
- 
+
 	mux.HandleFunc("/todos", func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodGet:
@@ -93,9 +95,15 @@ func main() {
  
 	mux.Handle("/swagger/", httpSwagger.WrapHandler)
  
+	handlerWithMiddleware := middleware.RecoveryMiddleware(
+		middleware.CORSMiddleware(
+			middleware.AuthMiddleware(mux),
+		),
+	)
+
 	server := &http.Server{
 		Addr:    ":" + cfg.ServerPort,
-		Handler: mux,
+		Handler: handlerWithMiddleware, // ← підключаємо весь ланцюжок
 	}
  
 	quit := make(chan os.Signal, 1)
