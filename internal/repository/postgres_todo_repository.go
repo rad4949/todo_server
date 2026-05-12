@@ -3,7 +3,7 @@ package repository
 import (
 	"database/sql"
 	"fmt"
-	"todo_server/model"
+	"todo_server/internal/model"
 
 	"github.com/google/uuid"
 )

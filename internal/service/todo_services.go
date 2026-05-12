@@ -1,7 +1,7 @@
 package service
 
 import (
-	"todo_server/model"
+	"todo_server/internal/model"
 	"todo_server/internal/repository"
 )
 
