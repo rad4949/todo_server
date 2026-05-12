@@ -1,7 +1,7 @@
 package repository
 
 import (
-	"todo_server/model"
+	"todo_server/internal/model"
 )
 
 type TodoRepository interface {

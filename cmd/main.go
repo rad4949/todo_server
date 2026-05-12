@@ -13,7 +13,7 @@ import (
 	_ "github.com/lib/pq"
 	httpSwagger "github.com/swaggo/http-swagger"
 
-	"todo_server/config"
+	"todo_server/internal/config"
 	_ "todo_server/docs"
 	"todo_server/internal/handler"
 	"todo_server/internal/middleware"
