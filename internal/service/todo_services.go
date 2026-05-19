@@ -5,12 +5,6 @@ import (
 	"todo_server/internal/repository"
 )
 
-// test: unit, integration, e2e
-// connect Postgre
-// create config
-// using for e2e test containers
-// create docker file for project
-// + use uuid for id
 type TodoService struct {
 	repo repository.TodoRepository
 }
@@ -29,8 +23,8 @@ func (s *TodoService) GetByID(id string) (*model.Todo, error) {
 	return s.repo.GetByID(id)
 }
 
-func (s *TodoService) Create(title string) (model.Todo, error) {
-	return s.repo.Create(title)
+func (s *TodoService) Create(title string, userID *string) (model.Todo, error) { // ← додали userID *string
+	return s.repo.Create(title, userID)
 }
 
 func (s *TodoService) Update(id string, title string, completed bool) (*model.Todo, error) {

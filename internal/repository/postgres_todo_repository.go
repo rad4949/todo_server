@@ -7,6 +7,7 @@ import (
 
 	"github.com/google/uuid"
 )
+
 type PostgresTodoRepository struct {
 	db *sql.DB
 }
@@ -17,20 +18,18 @@ func NewPostgresTodoRepository(db *sql.DB) *PostgresTodoRepository {
 	}
 }
 
-func (r *PostgresTodoRepository) Create(title string) (model.Todo, error) {
+func (r *PostgresTodoRepository) Create(title string, userID *string) (model.Todo, error) {
 	id := uuid.New().String()
 
-	todo := model.Todo{
-		ID:        id,
-		Title:     title,
-		Completed: false,
-	}
 	query := `
-		INSERT INTO todos (id, title, completed)
-		VALUES ($1, $2, $3)
+		INSERT INTO todos (id, title, completed, user_id)
+		VALUES ($1, $2, $3, $4)
+		RETURNING id, title, completed, user_id
 	`
 
-	_, err := r.db.Exec(query, todo.ID, todo.Title, todo.Completed)
+	var todo model.Todo
+	err := r.db.QueryRow(query, id, title, false, userID).
+		Scan(&todo.ID, &todo.Title, &todo.Completed, &todo.UserID)
 	if err != nil {
 		return model.Todo{}, fmt.Errorf("create todo: %w", err)
 	}
@@ -40,7 +39,7 @@ func (r *PostgresTodoRepository) Create(title string) (model.Todo, error) {
 
 func (r *PostgresTodoRepository) GetAll() []model.Todo {
 	query := `
-		SELECT id, title, completed
+		SELECT id, title, completed, user_id
 		FROM todos
 		ORDER BY title
 	`
@@ -55,12 +54,10 @@ func (r *PostgresTodoRepository) GetAll() []model.Todo {
 
 	for rows.Next() {
 		var todo model.Todo
-
-		err := rows.Scan(&todo.ID, &todo.Title, &todo.Completed)
+		err := rows.Scan(&todo.ID, &todo.Title, &todo.Completed, &todo.UserID)
 		if err != nil {
 			return []model.Todo{}
 		}
-
 		todos = append(todos, todo)
 	}
 
@@ -69,14 +66,14 @@ func (r *PostgresTodoRepository) GetAll() []model.Todo {
 
 func (r *PostgresTodoRepository) GetByID(id string) (*model.Todo, error) {
 	query := `
-		SELECT id, title, completed
+		SELECT id, title, completed, user_id
 		FROM todos
 		WHERE id = $1
 	`
 
 	var todo model.Todo
-
-	err := r.db.QueryRow(query, id).Scan(&todo.ID, &todo.Title, &todo.Completed)
+	err := r.db.QueryRow(query, id).
+		Scan(&todo.ID, &todo.Title, &todo.Completed, &todo.UserID)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, fmt.Errorf("not found: %w", err)
@@ -92,12 +89,12 @@ func (r *PostgresTodoRepository) Update(id string, title string, completed bool)
 		UPDATE todos
 		SET title = $1, completed = $2
 		WHERE id = $3
-		RETURNING id, title, completed
+		RETURNING id, title, completed, user_id
 	`
 
 	var todo model.Todo
-
-	err := r.db.QueryRow(query, title, completed, id).Scan(&todo.ID, &todo.Title, &todo.Completed)
+	err := r.db.QueryRow(query, title, completed, id).
+		Scan(&todo.ID, &todo.Title, &todo.Completed, &todo.UserID)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, fmt.Errorf("not found: %w", err)
