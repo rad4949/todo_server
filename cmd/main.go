@@ -61,6 +61,11 @@ func main() {
 	todoService := service.NewTodoService(todoRepo)
 	todoHandler := handler.NewTodoHandler(todoService)
 
+	jwtService := service.NewJWTService(cfg.JWTSecret, cfg.JWTRefreshSecret)
+
+	authHandler := handler.NewAuthHandler(jwtService)
+
+
 	mux := http.NewServeMux()
  
 	mux.HandleFunc("/", todoHandler.Hello)
@@ -94,10 +99,12 @@ func main() {
 	})
  
 	mux.Handle("/swagger/", httpSwagger.WrapHandler)
+	mux.HandleFunc("/auth/login", authHandler.Login)
+	mux.HandleFunc("/auth/refresh", authHandler.Refresh)
  
 	handlerWithMiddleware := middleware.RecoveryMiddleware(
 		middleware.CORSMiddleware(
-			middleware.AuthMiddleware(mux),
+			 middleware.AuthMiddleware(jwtService)(mux),
 		),
 	)
 
