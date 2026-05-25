@@ -1,5 +1,5 @@
 package main
- 
+
 import (
 	"context"
 	"database/sql"
@@ -13,27 +13,26 @@ import (
 	_ "github.com/lib/pq"
 	httpSwagger "github.com/swaggo/http-swagger"
 
-	"todo_server/internal/config"
 	_ "todo_server/docs"
+	"todo_server/internal/config"
 	"todo_server/internal/handler"
 	"todo_server/internal/middleware"
 	"todo_server/internal/repository"
 	"todo_server/internal/service"
 )
 
- 
 // @title Todo API
 // @version 1.0
 // @description Simple Todo API
 // @host localhost:8080
 // @BasePath /
 func main() {
- 
+
 	cfg, err := config.Load()
 	if err != nil {
 		panic(err)
 	}
- 
+
 	connStr := fmt.Sprintf(
 		"host=%s port=%s user=%s password=%s dbname=%s sslmode=%s",
 		cfg.DBHost,
@@ -57,14 +56,26 @@ func main() {
 
 	fmt.Println("Connected to PostgreSQL")
 
+	// ── Репозиторії ──────────────────────────────────────────
 	todoRepo := repository.NewPostgresTodoRepository(db)
-	todoService := service.NewTodoService(todoRepo)
-	todoHandler := handler.NewTodoHandler(todoService)
+	userRepo := repository.NewPostgresUserRepository(db) // ← нове
 
+	// ── Сервіси ──────────────────────────────────────────────
+	todoService := service.NewTodoService(todoRepo)
+	userService := service.NewUserService(userRepo)                        // ← нове
+	jwtService := service.NewJWTService(cfg.JWTSecret, cfg.JWTRefreshSecret)
+
+	// ── Хендлери ─────────────────────────────────────────────
+	todoHandler := handler.NewTodoHandler(todoService)
+	userHandler := handler.NewUserHandler(userService)                     // ← нове
+	authHandler := handler.NewAuthHandler(jwtService, userService)         // ← додали userService
+
+	// ── Маршрути ─────────────────────────────────────────────
 	mux := http.NewServeMux()
- 
+
 	mux.HandleFunc("/", todoHandler.Hello)
 
+	// todos
 	mux.HandleFunc("/todos", func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodGet:
@@ -77,7 +88,7 @@ func main() {
 			w.Write([]byte(`{"error":"method not allowed"}`))
 		}
 	})
- 
+
 	mux.HandleFunc("/todos/", func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodGet:
@@ -92,39 +103,75 @@ func main() {
 			w.Write([]byte(`{"error":"method not allowed"}`))
 		}
 	})
- 
+
+	// users ← нові маршрути
+	mux.HandleFunc("/users", func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			userHandler.GetUsers(w, r)
+		case http.MethodPost:
+			userHandler.RegisterUser(w, r)
+		default:
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			w.Write([]byte(`{"error":"method not allowed"}`))
+		}
+	})
+
+	mux.HandleFunc("/users/", func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			userHandler.GetUserByID(w, r)
+		case http.MethodPut:
+			userHandler.UpdateUser(w, r)
+		case http.MethodDelete:
+			userHandler.DeleteUser(w, r)
+		default:
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			w.Write([]byte(`{"error":"method not allowed"}`))
+		}
+	})
+
+	// auth
+	mux.HandleFunc("/auth/login", authHandler.Login)
+	mux.HandleFunc("/auth/refresh", authHandler.Refresh)
+
+	// swagger
 	mux.Handle("/swagger/", httpSwagger.WrapHandler)
- 
+
+	// ── Middleware ────────────────────────────────────────────
 	handlerWithMiddleware := middleware.RecoveryMiddleware(
 		middleware.CORSMiddleware(
-			middleware.AuthMiddleware(mux),
+			middleware.AuthMiddleware(jwtService)(mux),
 		),
 	)
 
+	// ── Сервер ───────────────────────────────────────────────
 	server := &http.Server{
 		Addr:    ":" + cfg.ServerPort,
-		Handler: handlerWithMiddleware, // ← підключаємо весь ланцюжок
+		Handler: handlerWithMiddleware,
 	}
- 
+
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
- 
+
 	go func() {
 		fmt.Println("Server started on :" + cfg.ServerPort)
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			panic(err)
 		}
 	}()
- 
+
 	<-quit
 	fmt.Println("Shutting down server...")
- 
+
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
- 
+
 	if err := server.Shutdown(ctx); err != nil {
 		fmt.Println("Server forced to shutdown:", err)
 	}
- 
+
 	fmt.Println("Server stopped gracefully")
 }

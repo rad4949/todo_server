@@ -36,7 +36,7 @@ func (r *InMemoryTodoRepository) GetByID(id string) (*model.Todo, error) {
 	return &todo, nil
 }
 
-func (r *InMemoryTodoRepository) Create(title string) (model.Todo, error) {
+func (r *InMemoryTodoRepository) Create(title string, userID *string) (model.Todo, error) { // ← додали userID *string
 	id := uuid.New().String()
 	if _, exist := r.todos[id]; exist {
 		return model.Todo{}, errors.New("todo with this ID already exists")
@@ -46,6 +46,7 @@ func (r *InMemoryTodoRepository) Create(title string) (model.Todo, error) {
 		ID:        id,
 		Title:     title,
 		Completed: false,
+		UserID:    userID, // ← зберігаємо userID
 	}
 
 	r.todos[id] = todo
