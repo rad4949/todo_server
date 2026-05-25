@@ -8,13 +8,13 @@ import (
 
 type AuthHandler struct {
 	jwtService  *service.JWTService
-	userService *service.UserService // ← додали
+	userService *service.UserService 
 }
 
 func NewAuthHandler(jwtService *service.JWTService, userService *service.UserService) *AuthHandler {
 	return &AuthHandler{
 		jwtService:  jwtService,
-		userService: userService, // ← додали
+		userService: userService, 
 	}
 }
 

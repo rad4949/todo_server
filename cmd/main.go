@@ -14,11 +14,13 @@ import (
 	httpSwagger "github.com/swaggo/http-swagger"
 
 	_ "todo_server/docs"
-	"todo_server/internal/config"
-	"todo_server/internal/handler"
-	"todo_server/internal/middleware"
-	"todo_server/internal/repository"
-	"todo_server/internal/service"
+	"todo_server/internal/cache"
+    "todo_server/internal/config"
+    "todo_server/internal/handler"
+    "todo_server/internal/middleware"
+    "todo_server/internal/model"
+    "todo_server/internal/repository"
+    "todo_server/internal/service"
 )
 
 // @title Todo API
@@ -56,26 +58,25 @@ func main() {
 
 	fmt.Println("Connected to PostgreSQL")
 
-	// ── Репозиторії ──────────────────────────────────────────
 	todoRepo := repository.NewPostgresTodoRepository(db)
-	userRepo := repository.NewPostgresUserRepository(db) // ← нове
+	userRepo := repository.NewPostgresUserRepository(db) 
 
-	// ── Сервіси ──────────────────────────────────────────────
-	todoService := service.NewTodoService(todoRepo)
-	userService := service.NewUserService(userRepo)                        // ← нове
+	todoItemCache := cache.NewInMemoryCache[string, model.Todo]()
+	todoListCache := cache.NewInMemoryCache[string, []model.Todo]()
+	cachedTodoRepo := repository.NewCachedTodoRepository(todoRepo, todoItemCache, todoListCache)
+
+	todoService := service.NewTodoService(cachedTodoRepo)
+	userService := service.NewUserService(userRepo)                       
 	jwtService := service.NewJWTService(cfg.JWTSecret, cfg.JWTRefreshSecret)
 
-	// ── Хендлери ─────────────────────────────────────────────
 	todoHandler := handler.NewTodoHandler(todoService)
-	userHandler := handler.NewUserHandler(userService)                     // ← нове
-	authHandler := handler.NewAuthHandler(jwtService, userService)         // ← додали userService
+	userHandler := handler.NewUserHandler(userService)                    
+	authHandler := handler.NewAuthHandler(jwtService, userService)        
 
-	// ── Маршрути ─────────────────────────────────────────────
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("/", todoHandler.Hello)
 
-	// todos
 	mux.HandleFunc("/todos", func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodGet:
@@ -104,7 +105,6 @@ func main() {
 		}
 	})
 
-	// users ← нові маршрути
 	mux.HandleFunc("/users", func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodGet:
@@ -133,21 +133,17 @@ func main() {
 		}
 	})
 
-	// auth
 	mux.HandleFunc("/auth/login", authHandler.Login)
 	mux.HandleFunc("/auth/refresh", authHandler.Refresh)
 
-	// swagger
 	mux.Handle("/swagger/", httpSwagger.WrapHandler)
 
-	// ── Middleware ────────────────────────────────────────────
 	handlerWithMiddleware := middleware.RecoveryMiddleware(
 		middleware.CORSMiddleware(
 			middleware.AuthMiddleware(jwtService)(mux),
 		),
 	)
 
-	// ── Сервер ───────────────────────────────────────────────
 	server := &http.Server{
 		Addr:    ":" + cfg.ServerPort,
 		Handler: handlerWithMiddleware,
