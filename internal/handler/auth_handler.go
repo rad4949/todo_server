@@ -1,20 +1,28 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
+	"time"
 	"todo_server/internal/service"
+	"todo_server/internal/token"
+
+	
 )
 
 type AuthHandler struct {
 	jwtService  *service.JWTService
 	userService *service.UserService 
+	blocklist   *token.Blocklist
 }
 
-func NewAuthHandler(jwtService *service.JWTService, userService *service.UserService) *AuthHandler {
+func NewAuthHandler(jwtService *service.JWTService, userService *service.UserService, 
+	blocklist *token.Blocklist) *AuthHandler {
 	return &AuthHandler{
 		jwtService:  jwtService,
 		userService: userService, 
+		blocklist:   blocklist,
 	}
 }
 
@@ -99,6 +107,11 @@ func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if h.blocklist.IsBlocked(context.Background(), body.RefreshToken) {
+		writeError(w, http.StatusUnauthorized, "token has been revoked")
+		return
+	}
+
 	if body.RefreshToken == "" {
 		writeError(w, http.StatusBadRequest, "refresh_token is required")
 		return
@@ -118,5 +131,36 @@ func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 
 	writeJSON(w, http.StatusOK, map[string]string{
 		"access_token": accessToken,
+	})
+}
+
+func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		RefreshToken string `json:"refresh_token"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid json")
+		return
+	}
+
+	if body.RefreshToken == "" {
+		writeError(w, http.StatusBadRequest, "refresh_token is required")
+		return
+	}
+
+	claims, err := h.jwtService.ValidateRefreshToken(body.RefreshToken)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, "invalid or expired refresh token")
+		return
+	}
+
+	ttl := time.Until(claims.ExpiresAt.Time)
+	if err := h.blocklist.Block(context.Background(), body.RefreshToken, ttl); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to logout")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{
+		"message": "logged out successfully",
 	})
 }
