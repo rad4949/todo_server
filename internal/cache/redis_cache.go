@@ -39,3 +39,20 @@ func (c *RedisCache) Exists(ctx context.Context, key string) bool {
 func (c *RedisCache) Delete(ctx context.Context, key string) error {
 	return c.client.Del(ctx, key).Err()
 }
+
+func (c *RedisCache) Increment(ctx context.Context, key string, ttl time.Duration) (int64, error) {
+	attempts, err := c.client.Incr(ctx, key).Result()
+	if err != nil {
+		return 0, err
+	}
+
+	if attempts == 1 {
+		c.client.Expire(ctx, key, ttl)
+	}
+
+	return attempts, nil
+}
+
+func (c *RedisCache) SetWithTTL(ctx context.Context, key, value string, ttl time.Duration) error {
+	return c.client.Set(ctx, key, value, ttl).Err()
+}

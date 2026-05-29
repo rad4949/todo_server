@@ -90,6 +90,9 @@ func main() {
 	userHandler := handler.NewUserHandler(userService)                    
 	authHandler := handler.NewAuthHandler(jwtService, userService, blocklist)        
 
+	rateLimiter := middleware.RateLimitMiddleware(redisCache)
+	idempotency := middleware.IdempotencyMiddleware(redisCache)
+
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("/", todoHandler.Hello)
@@ -99,7 +102,7 @@ func main() {
 		case http.MethodGet:
 			todoHandler.GetTodos(w, r)
 		case http.MethodPost:
-			todoHandler.CreateTodo(w, r)
+			idempotency(http.HandlerFunc(todoHandler.CreateTodo)).ServeHTTP(w, r)
 		default:
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusMethodNotAllowed)
@@ -150,7 +153,7 @@ func main() {
 		}
 	})
 
-	mux.HandleFunc("/auth/login", authHandler.Login)
+	mux.Handle("/auth/login", rateLimiter(http.HandlerFunc(authHandler.Login)))
 	mux.HandleFunc("/auth/refresh", authHandler.Refresh)
 	mux.HandleFunc("/auth/logout", authHandler.Logout)
 
