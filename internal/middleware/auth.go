@@ -48,8 +48,7 @@ func isPublicPath(r *http.Request) bool {
 	path := r.URL.Path
 	method := r.Method
 
-	// Повністю публічні маршрути (будь-який метод)
-	fullyPublic := []string{"/", "/auth/login", "/auth/refresh"}
+	fullyPublic := []string{"/", "/auth/login", "/auth/refresh", "/auth/logout"}
 	for _, p := range fullyPublic {
 		if path == p {
 			return true

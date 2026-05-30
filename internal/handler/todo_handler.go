@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"strings"
+	"todo_server/internal/middleware"
 	"todo_server/internal/service"
 )
 
@@ -18,7 +19,6 @@ func NewTodoHandler(service *service.TodoService) *TodoHandler {
 
 type CreateTodoRequest struct {
 	Title  string  `json:"title"`
-	UserID *string `json:"user_id"`
 }
 
 type UpdateTodoRequest struct {
@@ -97,7 +97,13 @@ func (h *TodoHandler) CreateTodo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	todo, err := h.Service.Create(req.Title, req.UserID) // ← передаємо userID
+	userID, _ := r.Context().Value(middleware.UserIDKey).(string)
+	var userIDPtr *string
+	if userID != "" {
+		userIDPtr = &userID
+	}
+
+	todo, err := h.Service.Create(req.Title, userIDPtr) // ← передаємо userID
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return

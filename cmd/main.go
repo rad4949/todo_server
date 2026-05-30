@@ -11,16 +11,18 @@ import (
 	"time"
 
 	_ "github.com/lib/pq"
+	"github.com/redis/go-redis/v9"
 	httpSwagger "github.com/swaggo/http-swagger"
 
 	_ "todo_server/docs"
 	"todo_server/internal/cache"
-    "todo_server/internal/config"
-    "todo_server/internal/handler"
-    "todo_server/internal/middleware"
-    "todo_server/internal/model"
-    "todo_server/internal/repository"
-    "todo_server/internal/service"
+	"todo_server/internal/config"
+	"todo_server/internal/handler"
+	"todo_server/internal/middleware"
+	"todo_server/internal/model"
+	"todo_server/internal/repository"
+	"todo_server/internal/service"
+	"todo_server/internal/token"
 )
 
 // @title Todo API
@@ -58,6 +60,21 @@ func main() {
 
 	fmt.Println("Connected to PostgreSQL")
 
+	redisClient := redis.NewClient(&redis.Options{
+    Addr: cfg.RedisHost + ":" + cfg.RedisPort,
+	})
+
+	_, err = redisClient.Ping(context.Background()).Result()
+	if err != nil {
+		panic(fmt.Errorf("failed to connect to Redis: %w", err))
+	}
+	defer redisClient.Close()
+
+	fmt.Println("Connected to Redis")
+
+	redisCache := cache.NewRedisCache(redisClient, 7*24*time.Hour)
+	blocklist := token.NewBlocklist(redisCache)
+
 	todoRepo := repository.NewPostgresTodoRepository(db)
 	userRepo := repository.NewPostgresUserRepository(db) 
 
@@ -71,7 +88,10 @@ func main() {
 
 	todoHandler := handler.NewTodoHandler(todoService)
 	userHandler := handler.NewUserHandler(userService)                    
-	authHandler := handler.NewAuthHandler(jwtService, userService)        
+	authHandler := handler.NewAuthHandler(jwtService, userService, blocklist)        
+
+	rateLimiter := middleware.RateLimitMiddleware(redisCache)
+	idempotency := middleware.IdempotencyMiddleware(redisCache)
 
 	mux := http.NewServeMux()
 
@@ -82,7 +102,7 @@ func main() {
 		case http.MethodGet:
 			todoHandler.GetTodos(w, r)
 		case http.MethodPost:
-			todoHandler.CreateTodo(w, r)
+			idempotency(http.HandlerFunc(todoHandler.CreateTodo)).ServeHTTP(w, r)
 		default:
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusMethodNotAllowed)
@@ -133,8 +153,9 @@ func main() {
 		}
 	})
 
-	mux.HandleFunc("/auth/login", authHandler.Login)
+	mux.Handle("/auth/login", rateLimiter(http.HandlerFunc(authHandler.Login)))
 	mux.HandleFunc("/auth/refresh", authHandler.Refresh)
+	mux.HandleFunc("/auth/logout", authHandler.Logout)
 
 	mux.Handle("/swagger/", httpSwagger.WrapHandler)
 
