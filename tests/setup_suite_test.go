@@ -7,17 +7,21 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
-	"testing"
 
 	_ "github.com/lib/pq"
+	"github.com/stretchr/testify/suite"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
 	"github.com/testcontainers/testcontainers-go/wait"
 )
 
-var testDB *sql.DB
+type BaseSuite struct {
+	suite.Suite
+	DB        *sql.DB
+	container *postgres.PostgresContainer
+}
 
-func TestMain(m *testing.M) {
+func (s *BaseSuite) SetupSuite() {
 	ctx := context.Background()
 
 	container, err := postgres.Run(ctx,
@@ -39,33 +43,39 @@ func TestMain(m *testing.M) {
 		panic(fmt.Errorf("failed to get connection string: %w", err))
 	}
 
-	testDB, err = sql.Open("postgres", connStr)
+	db, err := sql.Open("postgres", connStr)
 	if err != nil {
 		panic(fmt.Errorf("failed to open db: %w", err))
 	}
 
-	if err := testDB.Ping(); err != nil {
+	if err := db.Ping(); err != nil {
 		panic(fmt.Errorf("failed to ping db: %w", err))
 	}
 
-	if err := runMigrations(testDB); err != nil {
+	if err := runMigrations(db); err != nil {
 		panic(fmt.Errorf("failed to run migrations: %w", err))
 	}
 
-	code := m.Run()
+	s.DB = db
+	s.container = container
+}
 
-	testDB.Close()
-	container.Terminate(ctx)
+func (s *BaseSuite) TearDownSuite() {
+	s.DB.Close()
+	s.container.Terminate(context.Background())
+}
 
-	os.Exit(code)
+func (s *BaseSuite) CleanDB() {
+	if _, err := s.DB.Exec(`TRUNCATE TABLE todos, users CASCADE`); err != nil {
+		panic(fmt.Errorf("failed to clean db: %w", err))
+	}
 }
 
 func runMigrations(db *sql.DB) error {
 	_, filename, _, _ := runtime.Caller(0)
-	migrationsPath := filepath.Join(filepath.Dir(filename), "../../db/migrations")
+	migrationsPath := filepath.Join(filepath.Dir(filename), "../internal/db/migrations")
 
-	pattern := filepath.Join(migrationsPath, "*.up.sql")
-	files, err := filepath.Glob(pattern)
+	files, err := filepath.Glob(filepath.Join(migrationsPath, "*.up.sql"))
 	if err != nil {
 		return fmt.Errorf("glob migrations: %w", err)
 	}
@@ -75,19 +85,10 @@ func runMigrations(db *sql.DB) error {
 		if err != nil {
 			return fmt.Errorf("read migration %s: %w", file, err)
 		}
-
 		if _, err := db.Exec(string(content)); err != nil {
 			return fmt.Errorf("exec migration %s: %w", file, err)
 		}
 	}
 
 	return nil
-}
-
-func cleanDB(t *testing.T) {
-	t.Helper()
-	_, err := testDB.Exec(`TRUNCATE TABLE todos, users CASCADE`)
-	if err != nil {
-		t.Fatalf("failed to clean db: %v", err)
-	}
 }
