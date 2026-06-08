@@ -1,23 +1,78 @@
 package tests
 
 import (
+	"context"
+	"database/sql"
+	"fmt"
 	"testing"
 	"todo_server/internal/repository"
 	"todo_server/internal/service"
 
+	_ "github.com/lib/pq"
 	"github.com/stretchr/testify/suite"
+	"github.com/testcontainers/testcontainers-go"
+	"github.com/testcontainers/testcontainers-go/modules/postgres"
+	"github.com/testcontainers/testcontainers-go/wait"
 )
 
 type UserServiceSuite struct {
-	BaseSuite
-	svc *service.UserService
+	suite.Suite
+	DB        *sql.DB
+	container *postgres.PostgresContainer
+	svc       *service.UserService
 }
 
-// SetupTest is called automatically before each test.
+func (s *UserServiceSuite) SetupSuite() {
+	ctx := context.Background()
+
+	container, err := postgres.Run(ctx,
+		"postgres:16-alpine",
+		postgres.WithDatabase("todo_test"),
+		postgres.WithUsername("test"),
+		postgres.WithPassword("test"),
+		testcontainers.WithWaitStrategy(
+			wait.ForLog("database system is ready to accept connections").
+				WithOccurrence(2),
+		),
+	)
+	if err != nil {
+		panic(fmt.Errorf("failed to start postgres container: %w", err))
+	}
+
+	connStr, err := container.ConnectionString(ctx, "sslmode=disable")
+	if err != nil {
+		panic(fmt.Errorf("failed to get connection string: %w", err))
+	}
+
+	db, err := sql.Open("postgres", connStr)
+	if err != nil {
+		panic(fmt.Errorf("failed to open db: %w", err))
+	}
+
+	if err := db.Ping(); err != nil {
+		panic(fmt.Errorf("failed to ping db: %w", err))
+	}
+
+	if err := runMigrations(db); err != nil {
+		panic(fmt.Errorf("failed to run migrations: %w", err))
+	}
+
+	s.DB = db
+	s.container = container
+}
+
+func (s *UserServiceSuite) TearDownSuite() {
+	s.DB.Close()
+	s.container.Terminate(context.Background())
+}
+
 func (s *UserServiceSuite) SetupTest() {
-	s.CleanDB()
 	repo := repository.NewPostgresUserRepository(s.DB)
 	s.svc = service.NewUserService(repo)
+}
+
+func (s *UserServiceSuite) TearDownTest() {
+	s.DB.Exec(`TRUNCATE TABLE todos, users CASCADE`)
 }
 
 func (s *UserServiceSuite) TestRegister() {
@@ -95,7 +150,6 @@ func (s *UserServiceSuite) TestDelete() {
 	s.Error(err)
 }
 
-// Entry point for running the suite.
 func TestUserServiceSuite(t *testing.T) {
 	suite.Run(t, new(UserServiceSuite))
 }
