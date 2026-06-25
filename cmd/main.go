@@ -17,7 +17,7 @@ import (
 	_ "todo_server/docs"
 	"todo_server/internal/cache"
 	"todo_server/internal/config"
-	"todo_server/internal/handler"
+	"todo_server/internal/handler/http"
 	"todo_server/internal/middleware"
 	"todo_server/internal/model"
 	"todo_server/internal/repository"

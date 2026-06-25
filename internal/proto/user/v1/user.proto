@@ -1,0 +1,37 @@
+syntax = "proto3";
+
+package user.v1;
+
+option go_package = "todo_server/internal/gen/user/v1;userv1";
+
+service UserService {
+  rpc Register(RegisterRequest) returns (UserResponse);
+  rpc GetUser(GetUserRequest) returns (UserResponse);
+  rpc ListUsers(ListUsersRequest) returns (ListUsersResponse);
+}
+
+message User {
+  string id = 1;
+  string username = 2;
+  string created_at = 3;
+  string updated_at = 4;
+}
+
+message RegisterRequest {
+  string username = 1;
+  string password = 2;
+}
+
+message GetUserRequest {
+  string id = 1;
+}
+
+message ListUsersRequest {}
+
+message UserResponse {
+  User user = 1;
+}
+
+message ListUsersResponse {
+  repeated User users = 1;
+}
