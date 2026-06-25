@@ -4,19 +4,23 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
-	"net"
 
 	_ "github.com/lib/pq"
 	"github.com/redis/go-redis/v9"
 	httpSwagger "github.com/swaggo/http-swagger"
-	grpchandler "todo_server/internal/handler/grpc"
+	authv1 "todo_server/internal/gen/auth/v1"
+	todov1 "todo_server/internal/gen/todo/v1"
 	userv1 "todo_server/internal/gen/user/v1"
+	grpchandler "todo_server/internal/handler/grpc"
 
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/reflection"
 	_ "todo_server/docs"
 	"todo_server/internal/cache"
 	"todo_server/internal/config"
@@ -26,8 +30,6 @@ import (
 	"todo_server/internal/repository"
 	"todo_server/internal/service"
 	"todo_server/internal/token"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/reflection"
 )
 
 // @title Todo API
@@ -66,7 +68,7 @@ func main() {
 	fmt.Println("Connected to PostgreSQL")
 
 	redisClient := redis.NewClient(&redis.Options{
-    Addr: cfg.RedisHost + ":" + cfg.RedisPort,
+		Addr: cfg.RedisHost + ":" + cfg.RedisPort,
 	})
 
 	_, err = redisClient.Ping(context.Background()).Result()
@@ -81,27 +83,31 @@ func main() {
 	blocklist := token.NewBlocklist(redisCache)
 
 	todoRepo := repository.NewPostgresTodoRepository(db)
-	userRepo := repository.NewPostgresUserRepository(db) 
+	userRepo := repository.NewPostgresUserRepository(db)
 
 	todoItemCache := cache.NewInMemoryCache[string, model.Todo]()
 	todoListCache := cache.NewInMemoryCache[string, []model.Todo]()
 	cachedTodoRepo := repository.NewCachedTodoRepository(todoRepo, todoItemCache, todoListCache)
 
 	todoService := service.NewTodoService(cachedTodoRepo)
-	userService := service.NewUserService(userRepo)                       
+	userService := service.NewUserService(userRepo)
 	jwtService := service.NewJWTService(cfg.JWTSecret, cfg.JWTRefreshSecret)
 
 	grpcServer := grpc.NewServer()
 
 	userGRPCHandler := grpchandler.NewUserHandler(userService)
+	authGRPCHandler := grpchandler.NewAuthHandler(jwtService, userService, blocklist)
+	todoGRPCHandler := grpchandler.NewTodoHandler(todoService)
 
 	userv1.RegisterUserServiceServer(grpcServer, userGRPCHandler)
+	authv1.RegisterAuthServiceServer(grpcServer, authGRPCHandler)
+	todov1.RegisterTodoServiceServer(grpcServer, todoGRPCHandler)
 
 	reflection.Register(grpcServer)
 
 	todoHandler := handler.NewTodoHandler(todoService)
-	userHandler := handler.NewUserHandler(userService)                    
-	authHandler := handler.NewAuthHandler(jwtService, userService, blocklist)        
+	userHandler := handler.NewUserHandler(userService)
+	authHandler := handler.NewAuthHandler(jwtService, userService, blocklist)
 
 	rateLimiter := middleware.RateLimitMiddleware(redisCache)
 	idempotency := middleware.IdempotencyMiddleware(redisCache)

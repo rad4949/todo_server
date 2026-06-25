@@ -7,18 +7,23 @@ import (
 
 	userv1 "todo_server/internal/gen/user/v1"
 	"todo_server/internal/model"
-	"todo_server/internal/service"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
 
-type UserHandler struct {
-	userv1.UnimplementedUserServiceServer
-	service *service.UserService
+type UserService interface {
+	Register(username, email, password string) (model.User, error)
+	GetByID(id string) (*model.User, error)
+	GetAll() ([]model.User, error)
 }
 
-func NewUserHandler(service *service.UserService) *UserHandler {
+type UserHandler struct {
+	userv1.UnimplementedUserServiceServer
+	service UserService
+}
+
+func NewUserHandler(service UserService) *UserHandler {
 	return &UserHandler{
 		service: service,
 	}
