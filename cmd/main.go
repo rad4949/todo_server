@@ -9,10 +9,13 @@ import (
 	"os/signal"
 	"syscall"
 	"time"
+	"net"
 
 	_ "github.com/lib/pq"
 	"github.com/redis/go-redis/v9"
 	httpSwagger "github.com/swaggo/http-swagger"
+	grpchandler "todo_server/internal/handler/grpc"
+	userv1 "todo_server/internal/gen/user/v1"
 
 	_ "todo_server/docs"
 	"todo_server/internal/cache"
@@ -23,6 +26,8 @@ import (
 	"todo_server/internal/repository"
 	"todo_server/internal/service"
 	"todo_server/internal/token"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/reflection"
 )
 
 // @title Todo API
@@ -85,6 +90,14 @@ func main() {
 	todoService := service.NewTodoService(cachedTodoRepo)
 	userService := service.NewUserService(userRepo)                       
 	jwtService := service.NewJWTService(cfg.JWTSecret, cfg.JWTRefreshSecret)
+
+	grpcServer := grpc.NewServer()
+
+	userGRPCHandler := grpchandler.NewUserHandler(userService)
+
+	userv1.RegisterUserServiceServer(grpcServer, userGRPCHandler)
+
+	reflection.Register(grpcServer)
 
 	todoHandler := handler.NewTodoHandler(todoService)
 	userHandler := handler.NewUserHandler(userService)                    
@@ -180,6 +193,18 @@ func main() {
 		}
 	}()
 
+	grpcListener, err := net.Listen("tcp", ":"+cfg.GRPCPort)
+	if err != nil {
+		panic(fmt.Errorf("failed to listen gRPC port: %w", err))
+	}
+
+	go func() {
+		fmt.Println("gRPC server started on :" + cfg.GRPCPort)
+		if err := grpcServer.Serve(grpcListener); err != nil {
+			panic(fmt.Errorf("failed to serve gRPC server: %w", err))
+		}
+	}()
+
 	<-quit
 	fmt.Println("Shutting down server...")
 
@@ -189,6 +214,8 @@ func main() {
 	if err := server.Shutdown(ctx); err != nil {
 		fmt.Println("Server forced to shutdown:", err)
 	}
+
+	grpcServer.GracefulStop()
 
 	fmt.Println("Server stopped gracefully")
 }
