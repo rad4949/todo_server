@@ -133,6 +133,26 @@ func (h *TodoHandler) DeleteTodo(
 	}, nil
 }
 
+func (h *TodoHandler) WatchTodos(
+	req *todov1.WatchTodosRequest,
+	stream todov1.TodoService_WatchTodosServer,
+) error {
+	todos := h.service.GetAll()
+
+	for _, todo := range todos {
+		event := &todov1.TodoEvent{
+			Type: "TODO_SNAPSHOT",
+			Todo: mapTodoToProto(todo),
+		}
+
+		if err := stream.Send(event); err != nil {
+			return status.Error(codes.Internal, err.Error())
+		}
+	}
+
+	return nil
+}
+
 func mapTodoToProto(todo model.Todo) *todov1.Todo {
 	userID := ""
 	if todo.UserID != nil {

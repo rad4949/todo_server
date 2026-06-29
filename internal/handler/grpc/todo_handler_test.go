@@ -3,6 +3,7 @@ package grpchandler
 import (
 	"context"
 	"errors"
+	"io"
 	"net"
 	"testing"
 
@@ -365,4 +366,59 @@ func TestTodoHandler_DeleteTodo_NotFound(t *testing.T) {
 	})
 
 	assertGRPCCode(t, err, codes.NotFound)
+}
+
+func TestTodoHandler_WatchTodos_Success(t *testing.T) {
+	client := newTodoTestClient(t, &fakeTodoService{
+		getAllFunc: func() []model.Todo {
+			return []model.Todo{
+				{
+					ID:        "todo-1",
+					Title:     "Learn server streaming",
+					Completed: false,
+				},
+				{
+					ID:        "todo-2",
+					Title:     "Write stream test",
+					Completed: true,
+				},
+			}
+		},
+	})
+
+	stream, err := client.WatchTodos(context.Background(), &todov1.WatchTodosRequest{})
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+
+	firstEvent, err := stream.Recv()
+	if err != nil {
+		t.Fatalf("expected first event, got error: %v", err)
+	}
+
+	if firstEvent.GetType() != "TODO_SNAPSHOT" {
+		t.Fatalf("expected TODO_SNAPSHOT, got %s", firstEvent.GetType())
+	}
+
+	if firstEvent.GetTodo().GetId() != "todo-1" {
+		t.Fatalf("expected todo-1, got %s", firstEvent.GetTodo().GetId())
+	}
+
+	secondEvent, err := stream.Recv()
+	if err != nil {
+		t.Fatalf("expected second event, got error: %v", err)
+	}
+
+	if secondEvent.GetType() != "TODO_SNAPSHOT" {
+		t.Fatalf("expected TODO_SNAPSHOT, got %s", secondEvent.GetType())
+	}
+
+	if secondEvent.GetTodo().GetId() != "todo-2" {
+		t.Fatalf("expected todo-2, got %s", secondEvent.GetTodo().GetId())
+	}
+
+	_, err = stream.Recv()
+	if err != io.EOF {
+		t.Fatalf("expected EOF after all events, got %v", err)
+	}
 }
