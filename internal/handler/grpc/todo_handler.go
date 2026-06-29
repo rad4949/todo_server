@@ -3,6 +3,7 @@ package grpchandler
 import (
 	"context"
 	"strings"
+	"io"
 
 	todov1 "todo_server/internal/gen/todo/v1"
 	"todo_server/internal/model"
@@ -151,6 +152,43 @@ func (h *TodoHandler) WatchTodos(
 	}
 
 	return nil
+}
+
+func (h *TodoHandler) BulkCreateTodos(
+	stream todov1.TodoService_BulkCreateTodosServer,
+) error {
+	userID, ok := interceptors.UserIDFromContext(stream.Context())
+	if !ok {
+		return status.Error(codes.Unauthenticated, "unauthenticated")
+	}
+
+	var todos []*todov1.Todo
+
+	for {
+		req, err := stream.Recv()
+		if err == io.EOF {
+			return stream.SendAndClose(&todov1.BulkCreateTodosResponse{
+				CreatedCount: int32(len(todos)),
+				Todos:        todos,
+			})
+		}
+
+		if err != nil {
+			return status.Error(codes.Internal, err.Error())
+		}
+
+		title := strings.TrimSpace(req.GetTitle())
+		if title == "" {
+			return status.Error(codes.InvalidArgument, "title is required")
+		}
+
+		todo, err := h.service.Create(title, &userID)
+		if err != nil {
+			return status.Error(codes.Internal, err.Error())
+		}
+
+		todos = append(todos, mapTodoToProto(todo))
+	}
 }
 
 func mapTodoToProto(todo model.Todo) *todov1.Todo {

@@ -100,6 +100,9 @@ func main() {
 			grpcinterceptors.LoggingUnaryInterceptor,
 			grpcinterceptors.AuthUnaryInterceptor(jwtService),
 		),
+		grpc.ChainStreamInterceptor(
+			grpcinterceptors.AuthStreamInterceptor(jwtService),
+		),
 	)
 
 	userGRPCHandler := grpchandler.NewUserHandler(userService)
