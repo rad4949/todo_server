@@ -18,6 +18,7 @@ import (
 	todov1 "todo_server/internal/gen/todo/v1"
 	userv1 "todo_server/internal/gen/user/v1"
 	grpchandler "todo_server/internal/handler/grpc"
+	grpcinterceptors "todo_server/internal/handler/grpc/interceptors"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/reflection"
@@ -93,7 +94,12 @@ func main() {
 	userService := service.NewUserService(userRepo)
 	jwtService := service.NewJWTService(cfg.JWTSecret, cfg.JWTRefreshSecret)
 
-	grpcServer := grpc.NewServer()
+	grpcServer := grpc.NewServer(
+		grpc.ChainUnaryInterceptor(
+			grpcinterceptors.RecoveryUnaryInterceptor,
+			grpcinterceptors.LoggingUnaryInterceptor,
+		),
+	)
 
 	userGRPCHandler := grpchandler.NewUserHandler(userService)
 	authGRPCHandler := grpchandler.NewAuthHandler(jwtService, userService, blocklist)
