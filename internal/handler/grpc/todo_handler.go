@@ -9,6 +9,7 @@ import (
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"todo_server/internal/handler/grpc/interceptors"
 )
 
 type TodoService interface {
@@ -39,7 +40,12 @@ func (h *TodoHandler) CreateTodo(
 		return nil, status.Error(codes.InvalidArgument, "title is required")
 	}
 
-	todo, err := h.service.Create(title, nil)
+	userID, ok := interceptors.UserIDFromContext(ctx)
+	if !ok {
+		return nil, status.Error(codes.Unauthenticated, "unauthenticated")
+	}
+
+	todo, err := h.service.Create(title, &userID)
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}

@@ -98,6 +98,7 @@ func main() {
 		grpc.ChainUnaryInterceptor(
 			grpcinterceptors.RecoveryUnaryInterceptor,
 			grpcinterceptors.LoggingUnaryInterceptor,
+			grpcinterceptors.AuthUnaryInterceptor(jwtService),
 		),
 	)
 

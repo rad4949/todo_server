@@ -12,6 +12,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/test/bufconn"
+	"todo_server/internal/handler/grpc/interceptors"
 )
 
 type fakeTodoService struct {
@@ -67,7 +68,18 @@ func newTodoTestClient(t *testing.T, todoService TodoService) todov1.TodoService
 
 	listener := bufconn.Listen(bufSize)
 
-	server := grpc.NewServer()
+	server := grpc.NewServer(
+		grpc.UnaryInterceptor(func(
+			ctx context.Context,
+			req any,
+			info *grpc.UnaryServerInfo,
+			handler grpc.UnaryHandler,
+		) (any, error) {
+			ctx = context.WithValue(ctx, interceptors.UserIDKey, "user-1")
+			ctx = context.WithValue(ctx, interceptors.UsernameKey, "grpc_user")
+			return handler(ctx, req)
+		}),
+	)
 	todov1.RegisterTodoServiceServer(server, NewTodoHandler(todoService))
 
 	go func() {
@@ -106,8 +118,12 @@ func TestTodoHandler_CreateTodo_Success(t *testing.T) {
 				t.Fatalf("expected title Learn gRPC, got %s", title)
 			}
 
-			if userID != nil {
-				t.Fatalf("expected nil userID, got %v", *userID)
+			if userID == nil {
+				t.Fatalf("expected userID, got nil")
+			}
+
+			if *userID != "user-1" {
+				t.Fatalf("expected userID user-1, got %s", *userID)
 			}
 
 			return model.Todo{
