@@ -64,6 +64,15 @@ func (f *fakeTodoService) Delete(id string) error {
 	return nil
 }
 
+type testServerStream struct {
+	grpc.ServerStream
+	ctx context.Context
+}
+
+func (s *testServerStream) Context() context.Context {
+	return s.ctx
+}
+
 func newTodoTestClient(t *testing.T, todoService TodoService) todov1.TodoServiceClient {
 	t.Helper()
 
@@ -79,6 +88,22 @@ func newTodoTestClient(t *testing.T, todoService TodoService) todov1.TodoService
 			ctx = context.WithValue(ctx, interceptors.UserIDKey, "user-1")
 			ctx = context.WithValue(ctx, interceptors.UsernameKey, "grpc_user")
 			return handler(ctx, req)
+		}),
+		grpc.StreamInterceptor(func(
+			srv any,
+			stream grpc.ServerStream,
+			info *grpc.StreamServerInfo,
+			handler grpc.StreamHandler,
+		) error {
+			ctx := context.WithValue(stream.Context(), interceptors.UserIDKey, "user-1")
+			ctx = context.WithValue(ctx, interceptors.UsernameKey, "grpc_user")
+
+			wrappedStream := &testServerStream{
+				ServerStream: stream,
+				ctx:          ctx,
+			}
+
+			return handler(srv, wrappedStream)
 		}),
 	)
 	todov1.RegisterTodoServiceServer(server, NewTodoHandler(todoService))
@@ -420,5 +445,73 @@ func TestTodoHandler_WatchTodos_Success(t *testing.T) {
 	_, err = stream.Recv()
 	if err != io.EOF {
 		t.Fatalf("expected EOF after all events, got %v", err)
+	}
+}
+
+func TestTodoHandler_SyncTodos_CreateAndError(t *testing.T) {
+	client := newTodoTestClient(t, &fakeTodoService{
+		createFunc: func(title string, userID *string) (model.Todo, error) {
+			if userID == nil {
+				t.Fatalf("expected userID, got nil")
+			}
+
+			return model.Todo{
+				ID:        "todo-" + title,
+				Title:     title,
+				Completed: false,
+				UserID:    userID,
+			}, nil
+		},
+	})
+
+	stream, err := client.SyncTodos(context.Background())
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+
+	err = stream.Send(&todov1.TodoSyncRequest{
+		Action: "CREATE",
+		Title:  "Bidi test todo",
+	})
+	if err != nil {
+		t.Fatalf("expected send success, got %v", err)
+	}
+
+	event, err := stream.Recv()
+	if err != nil {
+		t.Fatalf("expected created event, got %v", err)
+	}
+
+	if event.GetType() != "CREATED" {
+		t.Fatalf("expected CREATED, got %s", event.GetType())
+	}
+
+	if event.GetTodo().GetTitle() != "Bidi test todo" {
+		t.Fatalf("expected title Bidi test todo, got %s", event.GetTodo().GetTitle())
+	}
+
+	err = stream.Send(&todov1.TodoSyncRequest{
+		Action: "UNKNOWN",
+		Title:  "Unsupported action",
+	})
+	if err != nil {
+		t.Fatalf("expected send success, got %v", err)
+	}
+
+	event, err = stream.Recv()
+	if err != nil {
+		t.Fatalf("expected error event, got %v", err)
+	}
+
+	if event.GetType() != "ERROR" {
+		t.Fatalf("expected ERROR, got %s", event.GetType())
+	}
+
+	if event.GetError() != "unsupported action" {
+		t.Fatalf("expected unsupported action error, got %s", event.GetError())
+	}
+
+	if err := stream.CloseSend(); err != nil {
+		t.Fatalf("expected close send success, got %v", err)
 	}
 }

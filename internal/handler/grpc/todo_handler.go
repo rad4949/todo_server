@@ -191,6 +191,68 @@ func (h *TodoHandler) BulkCreateTodos(
 	}
 }
 
+func (h *TodoHandler) SyncTodos(
+	stream todov1.TodoService_SyncTodosServer,
+) error {
+	userID, ok := interceptors.UserIDFromContext(stream.Context())
+	if !ok {
+		return status.Error(codes.Unauthenticated, "unauthenticated")
+	}
+
+	for {
+		req, err := stream.Recv()
+		if err == io.EOF {
+			return nil
+		}
+
+		if err != nil {
+			return status.Error(codes.Internal, err.Error())
+		}
+
+		action := strings.ToUpper(strings.TrimSpace(req.GetAction()))
+
+		switch action {
+		case "CREATE":
+			title := strings.TrimSpace(req.GetTitle())
+			if title == "" {
+				if err := stream.Send(&todov1.TodoSyncEvent{
+					Type:  "ERROR",
+					Error: "title is required",
+				}); err != nil {
+					return status.Error(codes.Internal, err.Error())
+				}
+				continue
+			}
+
+			todo, err := h.service.Create(title, &userID)
+			if err != nil {
+				if err := stream.Send(&todov1.TodoSyncEvent{
+					Type:  "ERROR",
+					Error: err.Error(),
+				}); err != nil {
+					return status.Error(codes.Internal, err.Error())
+				}
+				continue
+			}
+
+			if err := stream.Send(&todov1.TodoSyncEvent{
+				Type: "CREATED",
+				Todo: mapTodoToProto(todo),
+			}); err != nil {
+				return status.Error(codes.Internal, err.Error())
+			}
+
+		default:
+			if err := stream.Send(&todov1.TodoSyncEvent{
+				Type:  "ERROR",
+				Error: "unsupported action",
+			}); err != nil {
+				return status.Error(codes.Internal, err.Error())
+			}
+		}
+	}
+}
+
 func mapTodoToProto(todo model.Todo) *todov1.Todo {
 	userID := ""
 	if todo.UserID != nil {

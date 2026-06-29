@@ -13,6 +13,7 @@ service TodoService {
 
   rpc WatchTodos(WatchTodosRequest) returns (stream TodoEvent);
   rpc BulkCreateTodos(stream CreateTodoRequest) returns (BulkCreateTodosResponse);
+  rpc SyncTodos(stream TodoSyncRequest) returns (stream TodoSyncEvent);
 }
 
 message Todo {
@@ -66,4 +67,17 @@ message TodoEvent {
 message BulkCreateTodosResponse {
   int32 created_count = 1;
   repeated Todo todos = 2;
+}
+
+message TodoSyncRequest {
+  string action = 1;
+  string id = 2;
+  string title = 3;
+  bool completed = 4;
+}
+
+message TodoSyncEvent {
+  string type = 1;
+  Todo todo = 2;
+  string error = 3;
 }
