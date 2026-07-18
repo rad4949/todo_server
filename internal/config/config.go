@@ -17,11 +17,13 @@ type Config struct {
 	DBName     string `env:"DB_NAME" envDefault:"todo"`
 	DBSSLMode  string `env:"DB_SSLMODE" envDefault:"disable"`
 
-    JWTSecret           string `env:"JWT_SECRET,required"`
-    JWTRefreshSecret    string `env:"JWT_REFRESH_SECRET,required"`
+	JWTSecret        string `env:"JWT_SECRET,required"`
+	JWTRefreshSecret string `env:"JWT_REFRESH_SECRET,required"`
 
 	RedisHost string `env:"REDIS_HOST" envDefault:"localhost"`
 	RedisPort string `env:"REDIS_PORT" envDefault:"6379"`
+
+	GRPCPort string `env:"GRPC_PORT" envDefault:"50051"`
 }
 
 func Load() (*Config, error) {

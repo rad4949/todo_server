@@ -1,0 +1,83 @@
+syntax = "proto3";
+
+package todo.v1;
+
+option go_package = "todo_server/internal/gen/todo/v1;todov1";
+
+service TodoService {
+  rpc CreateTodo(CreateTodoRequest) returns (TodoResponse);
+  rpc GetTodo(GetTodoRequest) returns (TodoResponse);
+  rpc ListTodos(ListTodosRequest) returns (ListTodosResponse);
+  rpc UpdateTodo(UpdateTodoRequest) returns (TodoResponse);
+  rpc DeleteTodo(DeleteTodoRequest) returns (DeleteTodoResponse);
+
+  rpc WatchTodos(WatchTodosRequest) returns (stream TodoEvent);
+  rpc BulkCreateTodos(stream CreateTodoRequest) returns (BulkCreateTodosResponse);
+  rpc SyncTodos(stream TodoSyncRequest) returns (stream TodoSyncEvent);
+}
+
+message Todo {
+  string id = 1;
+  string title = 2;
+  bool completed = 3;
+  string user_id = 4;
+  string created_at = 5;
+  string updated_at = 6;
+}
+
+message CreateTodoRequest {
+  string title = 1;
+}
+
+message GetTodoRequest {
+  string id = 1;
+}
+
+message ListTodosRequest {}
+
+message UpdateTodoRequest {
+  string id = 1;
+  string title = 2;
+  bool completed = 3;
+}
+
+message DeleteTodoRequest {
+  string id = 1;
+}
+
+message TodoResponse {
+  Todo todo = 1;
+}
+
+message ListTodosResponse {
+  repeated Todo todos = 1;
+}
+
+message DeleteTodoResponse {
+  bool success = 1;
+}
+
+message WatchTodosRequest {}
+
+message TodoEvent {
+  string type = 1;
+  Todo todo = 2;
+}
+
+message BulkCreateTodosResponse {
+  int32 created_count = 1;
+  repeated Todo todos = 2;
+}
+
+message TodoSyncRequest {
+  string action = 1;
+  string id = 2;
+  string title = 3;
+  bool completed = 4;
+}
+
+message TodoSyncEvent {
+  string type = 1;
+  Todo todo = 2;
+  string error = 3;
+}
