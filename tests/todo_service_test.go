@@ -3,11 +3,14 @@ package tests
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
 	"testing"
+	"todo_server/internal/model"
 	"todo_server/internal/repository"
 	"todo_server/internal/service"
 
@@ -17,6 +20,28 @@ import (
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
 	"github.com/testcontainers/testcontainers-go/wait"
 )
+
+type failingOutboxRepository struct {
+	err error
+}
+
+func (r *failingOutboxRepository) Create(
+	_ context.Context,
+	_ repository.DBExecutor,
+	_ model.OutboxEvent,
+) error {
+	return r.err
+}
+
+type storedOutboxEvent struct {
+	AggregateType string
+	AggregateID   string
+	EventType     string
+	EventVersion  int
+	Status        string
+	Attempts      int
+	Payload       model.TodoEventPayload
+}
 
 type TodoServiceSuite struct {
 	suite.Suite
@@ -70,28 +95,45 @@ func (s *TodoServiceSuite) TearDownSuite() {
 }
 
 func (s *TodoServiceSuite) SetupTest() {
-	repo := repository.NewPostgresTodoRepository(s.DB)
+	outboxRepo := repository.NewPostgresOutboxRepository(s.DB)
+	repo := repository.NewPostgresTodoRepository(
+		s.DB,
+		outboxRepo,
+	)
 	s.svc = service.NewTodoService(repo)
 }
 
 func (s *TodoServiceSuite) TearDownTest() {
-	s.DB.Exec(`TRUNCATE TABLE todos, users CASCADE`)
+	s.DB.Exec(`
+	TRUNCATE TABLE outbox_events, todos, users CASCADE
+	`)
 }
 
 func (s *TodoServiceSuite) TestCreate() {
-	todo, err := s.svc.Create("buy milk", nil)
+	todo, err := s.svc.Create(context.Background(), "buy milk", nil)
 
 	s.NoError(err)
 	s.Equal("buy milk", todo.Title)
 	s.False(todo.Completed)
 	s.NotEmpty(todo.ID)
+
+	event := s.requireOutboxEvent(todo.ID, string(model.OutboxEventTodoCreated))
+	s.Equal(1, s.countOutboxEvents(todo.ID, string(model.OutboxEventTodoCreated)))
+	s.Equal("todo", event.AggregateType)
+	s.Equal(todo.ID, event.AggregateID)
+	s.Equal(model.TodoEventVersion, event.EventVersion)
+	s.Equal(string(model.OutboxEventStatusPending), event.Status)
+	s.Zero(event.Attempts)
+	s.Equal(todo.ID, event.Payload.ID)
+	s.Equal(todo.Title, event.Payload.Title)
+	s.False(event.Payload.Completed)
 }
 
 func (s *TodoServiceSuite) TestGetByID() {
-	created, err := s.svc.Create("find me", nil)
+	created, err := s.svc.Create(context.Background(), "find me", nil)
 	s.NoError(err)
 
-	found, err := s.svc.GetByID(created.ID)
+	found, err := s.svc.GetByID(context.Background(), created.ID)
 
 	s.NoError(err)
 	s.Equal(created.ID, found.ID)
@@ -99,47 +141,181 @@ func (s *TodoServiceSuite) TestGetByID() {
 }
 
 func (s *TodoServiceSuite) TestGetByID_NotFound() {
-	_, err := s.svc.GetByID("non-existing-id")
+	_, err := s.svc.GetByID(context.Background(), "non-existing-id")
 
 	s.Error(err)
 }
 
 func (s *TodoServiceSuite) TestGetAll() {
-	s.svc.Create("first", nil)
-	s.svc.Create("second", nil)
-	s.svc.Create("third", nil)
+	s.svc.Create(context.Background(), "first", nil)
+	s.svc.Create(context.Background(), "second", nil)
+	s.svc.Create(context.Background(), "third", nil)
 
-	todos := s.svc.GetAll()
+	todos, err := s.svc.GetAll(context.Background())
 
+	s.NoError(err)
 	s.Len(todos, 3)
 }
 
 func (s *TodoServiceSuite) TestUpdate() {
-	created, err := s.svc.Create("old title", nil)
+	created, err := s.svc.Create(context.Background(), "old title", nil)
 	s.NoError(err)
 
-	updated, err := s.svc.Update(created.ID, "new title", true)
+	updated, err := s.svc.Update(context.Background(), created.ID, "new title", true)
 
 	s.NoError(err)
 	s.Equal("new title", updated.Title)
 	s.True(updated.Completed)
+
+	event := s.requireOutboxEvent(created.ID, string(model.OutboxEventTodoUpdated))
+	s.Equal(1, s.countOutboxEvents(created.ID, string(model.OutboxEventTodoUpdated)))
+	s.Equal(created.ID, event.Payload.ID)
+	s.Equal("new title", event.Payload.Title)
+	s.True(event.Payload.Completed)
 }
 
 func (s *TodoServiceSuite) TestDelete() {
-	created, err := s.svc.Create("delete me", nil)
+	created, err := s.svc.Create(context.Background(), "delete me", nil)
 	s.NoError(err)
 
-	err = s.svc.Delete(created.ID)
+	deleted, err := s.svc.Delete(context.Background(), created.ID)
 	s.NoError(err)
+	s.Equal(created.ID, deleted.ID)
+	s.Equal(created.Title, deleted.Title)
 
-	_, err = s.svc.GetByID(created.ID)
+	_, err = s.svc.GetByID(context.Background(), created.ID)
 	s.Error(err)
+
+	event := s.requireOutboxEvent(created.ID, string(model.OutboxEventTodoDeleted))
+	s.Equal(1, s.countOutboxEvents(created.ID, string(model.OutboxEventTodoDeleted)))
+	s.Equal(created.ID, event.Payload.ID)
+	s.Equal(created.Title, event.Payload.Title)
+	s.False(event.Payload.Completed)
 }
 
 func (s *TodoServiceSuite) TestDelete_NotFound() {
-	err := s.svc.Delete("non-existing-id")
+	_, err := s.svc.Delete(context.Background(), "non-existing-id")
 
 	s.Error(err)
+	s.Equal(0, s.countRows("outbox_events"))
+}
+
+func (s *TodoServiceSuite) TestCreateRollsBackWhenOutboxInsertFails() {
+	failingService := s.newServiceWithFailingOutbox()
+
+	_, err := failingService.Create(context.Background(), "must rollback", nil)
+
+	s.Error(err)
+	s.Contains(err.Error(), "create TodoCreated outbox event")
+	s.Equal(0, s.countRows("todos"))
+	s.Equal(0, s.countRows("outbox_events"))
+}
+
+func (s *TodoServiceSuite) TestUpdateRollsBackWhenOutboxInsertFails() {
+	created, err := s.svc.Create(context.Background(), "original", nil)
+	s.Require().NoError(err)
+	failingService := s.newServiceWithFailingOutbox()
+
+	_, err = failingService.Update(
+		context.Background(),
+		created.ID,
+		"must rollback",
+		true,
+	)
+
+	s.Error(err)
+	s.Contains(err.Error(), "create TodoUpdated outbox event")
+	found, getErr := s.svc.GetByID(context.Background(), created.ID)
+	s.Require().NoError(getErr)
+	s.Equal("original", found.Title)
+	s.False(found.Completed)
+	s.Equal(1, s.countRows("outbox_events"), "only TodoCreated must remain")
+}
+
+func (s *TodoServiceSuite) TestDeleteRollsBackWhenOutboxInsertFails() {
+	created, err := s.svc.Create(context.Background(), "must survive", nil)
+	s.Require().NoError(err)
+	failingService := s.newServiceWithFailingOutbox()
+
+	_, err = failingService.Delete(context.Background(), created.ID)
+
+	s.Error(err)
+	s.Contains(err.Error(), "create TodoDeleted outbox event")
+	found, getErr := s.svc.GetByID(context.Background(), created.ID)
+	s.Require().NoError(getErr)
+	s.Equal(created.ID, found.ID)
+	s.Equal("must survive", found.Title)
+	s.Equal(1, s.countRows("outbox_events"), "only TodoCreated must remain")
+}
+
+func (s *TodoServiceSuite) newServiceWithFailingOutbox() *service.TodoService {
+	outbox := &failingOutboxRepository{
+		err: errors.New("forced outbox failure"),
+	}
+	repo := repository.NewPostgresTodoRepository(s.DB, outbox)
+	return service.NewTodoService(repo)
+}
+
+func (s *TodoServiceSuite) countRows(table string) int {
+	allowedTables := map[string]bool{
+		"todos":         true,
+		"outbox_events": true,
+	}
+	s.Require().True(allowedTables[table], "unexpected table name")
+
+	var count int
+	err := s.DB.QueryRow("SELECT COUNT(*) FROM " + table).Scan(&count)
+	s.Require().NoError(err)
+	return count
+}
+
+func (s *TodoServiceSuite) requireOutboxEvent(
+	aggregateID string,
+	eventType string,
+) storedOutboxEvent {
+	var event storedOutboxEvent
+	var payload []byte
+
+	err := s.DB.QueryRow(`
+		SELECT
+			aggregate_type,
+			aggregate_id,
+			event_type,
+			event_version,
+			status,
+			attempts,
+			payload
+		FROM outbox_events
+		WHERE aggregate_id = $1
+		  AND event_type = $2
+	`, aggregateID, eventType).Scan(
+		&event.AggregateType,
+		&event.AggregateID,
+		&event.EventType,
+		&event.EventVersion,
+		&event.Status,
+		&event.Attempts,
+		&payload,
+	)
+	s.Require().NoError(err)
+	s.Require().NoError(json.Unmarshal(payload, &event.Payload))
+
+	return event
+}
+
+func (s *TodoServiceSuite) countOutboxEvents(
+	aggregateID string,
+	eventType string,
+) int {
+	var count int
+	err := s.DB.QueryRow(`
+		SELECT COUNT(*)
+		FROM outbox_events
+		WHERE aggregate_id = $1
+		  AND event_type = $2
+	`, aggregateID, eventType).Scan(&count)
+	s.Require().NoError(err)
+	return count
 }
 
 func TestTodoServiceSuite(t *testing.T) {

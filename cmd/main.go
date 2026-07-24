@@ -83,7 +83,8 @@ func main() {
 	redisCache := cache.NewRedisCache(redisClient, 7*24*time.Hour)
 	blocklist := token.NewBlocklist(redisCache)
 
-	todoRepo := repository.NewPostgresTodoRepository(db)
+	outboxRepo := repository.NewPostgresOutboxRepository(db)
+	todoRepo := repository.NewPostgresTodoRepository(db, outboxRepo)
 	userRepo := repository.NewPostgresUserRepository(db)
 
 	todoItemCache := cache.NewInMemoryCache[string, model.Todo]()
