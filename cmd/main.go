@@ -28,6 +28,7 @@ import (
 	"todo_server/internal/handler/http"
 	"todo_server/internal/middleware"
 	"todo_server/internal/model"
+	"todo_server/internal/outbox"
 	"todo_server/internal/repository"
 	"todo_server/internal/service"
 	"todo_server/internal/token"
@@ -84,6 +85,57 @@ func main() {
 	blocklist := token.NewBlocklist(redisCache)
 
 	outboxRepo := repository.NewPostgresOutboxRepository(db)
+
+	kafkaPublisher, err := outbox.NewKafkaPublisher(
+		cfg.KafkaBrokers,
+		cfg.KafkaTopic,
+		cfg.KafkaDeliveryTimeout,
+	)
+	if err != nil {
+		panic(fmt.Errorf(
+			"failed to create Kafka publisher: %w",
+			err,
+		))
+	}
+	defer kafkaPublisher.Close()
+
+	kafkaPingCtx, kafkaPingCancel := context.WithTimeout(
+		context.Background(),
+		10*time.Second,
+	)
+
+	err = kafkaPublisher.Ping(kafkaPingCtx)
+	kafkaPingCancel()
+
+	if err != nil {
+		panic(fmt.Errorf(
+			"failed to connect to Kafka: %w",
+			err,
+		))
+	}
+
+	fmt.Println("Connected to Kafka")
+
+	outboxWorker, err := outbox.NewWorker(
+		outboxRepo,
+		kafkaPublisher,
+		outbox.WorkerConfig{
+			WorkerID:       cfg.OutboxWorkerID,
+			BatchSize:      cfg.OutboxBatchSize,
+			PollInterval:   cfg.OutboxPollInterval,
+			LockTimeout:    cfg.OutboxLockTimeout,
+			MaxAttempts:    cfg.OutboxMaxAttempts,
+			RetryBaseDelay: cfg.OutboxRetryBaseDelay,
+		},
+	)
+
+	if err != nil {
+		panic(fmt.Errorf(
+			"failed to create outbox worker: %w",
+			err,
+		))
+	}
+
 	todoRepo := repository.NewPostgresTodoRepository(db, outboxRepo)
 	userRepo := repository.NewPostgresUserRepository(db)
 
@@ -203,6 +255,20 @@ func main() {
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 
+	workerCtx, stopWorker := context.WithCancel(
+		context.Background(),
+	)
+
+	workerStopped := make(chan struct{})
+
+	go func() {
+		defer close(workerStopped)
+
+		fmt.Println("Outbox worker started")
+
+		outboxWorker.Run(workerCtx)
+	}()
+
 	go func() {
 		fmt.Println("Server started on :" + cfg.ServerPort)
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
@@ -224,6 +290,17 @@ func main() {
 
 	<-quit
 	fmt.Println("Shutting down server...")
+	stopWorker()
+
+	select {
+	case <-workerStopped:
+		fmt.Println("Outbox worker stopped")
+
+	case <-time.After(5 * time.Second):
+		fmt.Println(
+			"Timed out waiting for outbox worker to stop",
+		)
+	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()

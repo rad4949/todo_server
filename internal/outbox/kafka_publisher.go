@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strconv"
+	"time"
 
 	"todo_server/internal/model"
 
@@ -31,6 +32,7 @@ var _ Publisher = (*KafkaPublisher)(nil)
 func NewKafkaPublisher(
 	brokers []string,
 	topic string,
+	deliveryTimeout time.Duration,
 ) (*KafkaPublisher, error) {
 	if len(brokers) == 0 {
 		return nil, fmt.Errorf(
@@ -44,9 +46,16 @@ func NewKafkaPublisher(
 		)
 	}
 
+	if deliveryTimeout <= 0 {
+		return nil, fmt.Errorf(
+			"create Kafka publisher: delivery timeout must be positive",
+		)
+	}
+
 	client, err := kgo.NewClient(
 		kgo.SeedBrokers(brokers...),
 		kgo.ClientID("todo-outbox-publisher"),
+		kgo.RecordDeliveryTimeout(deliveryTimeout),
 	)
 	if err != nil {
 		return nil, fmt.Errorf(
@@ -91,7 +100,6 @@ func (p *KafkaPublisher) Publish(
 		Topic:     p.topic,
 		Key:       []byte(event.AggregateID),
 		Value:     value,
-		Timestamp: event.CreatedAt,
 		Headers: []kgo.RecordHeader{
 			{
 				Key:   "event_id",

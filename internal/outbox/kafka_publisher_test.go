@@ -107,13 +107,12 @@ func TestKafkaPublisherPublish(t *testing.T) {
 		)
 	}
 
-	if !producer.record.Timestamp.Equal(createdAt) {
-		t.Errorf(
-			"Timestamp = %v, want %v",
-			producer.record.Timestamp,
-			createdAt,
-		)
-	}
+	if !producer.record.Timestamp.IsZero() {
+	t.Errorf(
+		"Timestamp = %v, want zero value",
+		producer.record.Timestamp,
+	)
+}
 
 	var message Message
 
@@ -319,5 +318,43 @@ func TestKafkaPublisherPublishValidatesEvent(t *testing.T) {
 				)
 			}
 		})
+	}
+}
+
+func TestNewKafkaPublisherRejectsInvalidDeliveryTimeout(
+	t *testing.T,
+) {
+	publisher, err := NewKafkaPublisher(
+		[]string{"localhost:9092"},
+		"todo.events.v2",
+		0,
+	)
+
+	if err == nil {
+		if publisher != nil {
+			publisher.Close()
+		}
+
+		t.Fatal(
+			"expected NewKafkaPublisher() error, got nil",
+		)
+	}
+
+	if publisher != nil {
+		publisher.Close()
+
+		t.Error(
+			"publisher must be nil when delivery timeout is invalid",
+		)
+	}
+
+	if !strings.Contains(
+		err.Error(),
+		"delivery timeout must be positive",
+	) {
+		t.Errorf(
+			"error = %q, want delivery timeout validation error",
+			err,
+		)
 	}
 }
