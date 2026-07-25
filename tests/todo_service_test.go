@@ -13,6 +13,7 @@ import (
 	"todo_server/internal/model"
 	"todo_server/internal/repository"
 	"todo_server/internal/service"
+	"time"
 
 	_ "github.com/lib/pq"
 	"github.com/stretchr/testify/suite"
@@ -127,6 +128,26 @@ func (s *TodoServiceSuite) TestCreate() {
 	s.Equal(todo.ID, event.Payload.ID)
 	s.Equal(todo.Title, event.Payload.Title)
 	s.False(event.Payload.Completed)
+	s.Nil(event.Payload.UserID)
+	s.Nil(event.Payload.UserEmail)
+	s.Equal(2, event.EventVersion)
+	var hasUserEmail bool
+
+	err = s.DB.QueryRow(`
+	SELECT payload ? 'user_email'
+	FROM outbox_events
+	WHERE aggregate_id = $1
+	  AND event_type = $2
+`,
+		todo.ID,
+		string(model.OutboxEventTodoCreated),
+	).Scan(&hasUserEmail)
+
+	s.Require().NoError(err)
+	s.False(
+		hasUserEmail,
+		"user_email must be omitted when todo has no user",
+	)
 }
 
 func (s *TodoServiceSuite) TestGetByID() {
@@ -322,6 +343,108 @@ func TestTodoServiceSuite(t *testing.T) {
 	suite.Run(t, new(TodoServiceSuite))
 }
 
+func (s *TodoServiceSuite) TestTodoEventsIncludeUserEmail() {
+	const (
+		userID    = "11111111-1111-4111-8111-111111111111"
+		username  = "event_user"
+		userEmail = "events@example.com"
+	)
+
+	_, err := s.DB.Exec(`
+		INSERT INTO users (
+			id,
+			username,
+			email,
+			password
+		)
+		VALUES ($1, $2, $3, $4)
+	`,
+		userID,
+		username,
+		userEmail,
+		"unused-test-password",
+	)
+	s.Require().NoError(err)
+
+	created, err := s.svc.Create(
+		context.Background(),
+		"Todo with email",
+		stringPointer(userID),
+	)
+	s.Require().NoError(err)
+
+	createdEvent := s.requireOutboxEvent(
+		created.ID,
+		string(model.OutboxEventTodoCreated),
+	)
+
+	s.Require().NotNil(
+		createdEvent.Payload.UserEmail,
+	)
+	s.Equal(
+		userEmail,
+		*createdEvent.Payload.UserEmail,
+	)
+	s.Equal(
+		2,
+		createdEvent.EventVersion,
+	)
+
+	updated, err := s.svc.Update(
+		context.Background(),
+		created.ID,
+		"Updated todo with email",
+		true,
+	)
+	s.Require().NoError(err)
+	s.True(updated.Completed)
+
+	updatedEvent := s.requireOutboxEvent(
+		created.ID,
+		string(model.OutboxEventTodoUpdated),
+	)
+
+	s.Require().NotNil(
+		updatedEvent.Payload.UserEmail,
+	)
+	s.Equal(
+		userEmail,
+		*updatedEvent.Payload.UserEmail,
+	)
+	s.Equal(
+		2,
+		updatedEvent.EventVersion,
+	)
+
+	deleted, err := s.svc.Delete(
+		context.Background(),
+		created.ID,
+	)
+	s.Require().NoError(err)
+	s.Equal(created.ID, deleted.ID)
+
+	deletedEvent := s.requireOutboxEvent(
+		created.ID,
+		string(model.OutboxEventTodoDeleted),
+	)
+
+	s.Require().NotNil(
+		deletedEvent.Payload.UserEmail,
+	)
+	s.Equal(
+		userEmail,
+		*deletedEvent.Payload.UserEmail,
+	)
+	s.Equal(
+		2,
+		deletedEvent.EventVersion,
+	)
+}
+
+func stringPointer(value string) *string {
+	return &value
+}
+
 func runMigrations(db *sql.DB) error {
 	_, filename, _, _ := runtime.Caller(0)
 	migrationsPath := filepath.Join(filepath.Dir(filename), "../internal/db/migrations")
@@ -342,4 +465,32 @@ func runMigrations(db *sql.DB) error {
 	}
 
 	return nil
+}
+
+func (r *failingOutboxRepository) ClaimPending(
+	_ context.Context,
+	_ int,
+	_ string,
+	_ time.Time,
+) ([]model.OutboxEvent, error) {
+	return nil, r.err
+}
+
+func (r *failingOutboxRepository) MarkProcessed(
+	_ context.Context,
+	_ string,
+	_ string,
+) error {
+	return r.err
+}
+
+func (r *failingOutboxRepository) MarkFailed(
+	_ context.Context,
+	_ string,
+	_ string,
+	_ string,
+	_ time.Time,
+	_ int,
+) error {
+	return r.err
 }

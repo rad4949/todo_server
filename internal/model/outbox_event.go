@@ -22,7 +22,7 @@ const (
 	OutboxEventTodoDeleted OutboxEventType = "TodoDeleted"
 )
 
-const TodoEventVersion = 1
+const TodoEventVersion = 2
 
 type OutboxEvent struct {
 	ID            string            `json:"id"`
@@ -37,6 +37,8 @@ type OutboxEvent struct {
 	ProcessedAt   *time.Time        `json:"processed_at,omitempty"`
 	NextAttemptAt time.Time         `json:"next_attempt_at"`
 	LastError     *string           `json:"last_error,omitempty"`
+	LockedAt      *time.Time        `json:"locked_at,omitempty"`
+	LockedBy      *string           `json:"locked_by,omitempty"`
 }
 
 type TodoEventPayload struct {
@@ -44,4 +46,5 @@ type TodoEventPayload struct {
 	Title     string  `json:"title"`
 	Completed bool    `json:"completed"`
 	UserID    *string `json:"user_id,omitempty"`
+	UserEmail *string `json:"user_email,omitempty"`
 }

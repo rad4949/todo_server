@@ -27,6 +27,7 @@ func NewPostgresTodoRepository(
 
 func newTodoOutboxEvent(
 	todo model.Todo,
+	userEmail *string,
 	eventType model.OutboxEventType,
 ) (model.OutboxEvent, error) {
 	payload, err := json.Marshal(model.TodoEventPayload{
@@ -34,6 +35,7 @@ func newTodoOutboxEvent(
 		Title:     todo.Title,
 		Completed: todo.Completed,
 		UserID:    todo.UserID,
+		UserEmail: userEmail,
 	})
 	if err != nil {
 		return model.OutboxEvent{}, fmt.Errorf(
@@ -51,6 +53,45 @@ func newTodoOutboxEvent(
 		Payload:       payload,
 		Status:        model.OutboxEventStatusPending,
 	}, nil
+}
+
+func getUserEmail(
+	ctx context.Context,
+	tx *sql.Tx,
+	userID *string,
+) (*string, error) {
+	if userID == nil {
+		return nil, nil
+	}
+
+	const query = `
+		SELECT email
+		FROM users
+		WHERE id = $1
+	`
+
+	var email string
+
+	err := tx.QueryRowContext(
+		ctx,
+		query,
+		*userID,
+	).Scan(&email)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, fmt.Errorf(
+				"user not found for todo event: %w",
+				err,
+			)
+		}
+
+		return nil, fmt.Errorf(
+			"get user email for todo event: %w",
+			err,
+		)
+	}
+
+	return &email, nil
 }
 
 func (r *PostgresTodoRepository) Create(ctx context.Context, title string, userID *string) (model.Todo, error) {
@@ -79,8 +120,18 @@ func (r *PostgresTodoRepository) Create(ctx context.Context, title string, userI
 		return model.Todo{}, fmt.Errorf("create todo: %w", err)
 	}
 
+	userEmail, err := getUserEmail(
+		ctx,
+		tx,
+		todo.UserID,
+	)
+	if err != nil {
+		return model.Todo{}, err
+	}
+
 	event, err := newTodoOutboxEvent(
 		todo,
+		userEmail,
 		model.OutboxEventTodoCreated,
 	)
 	if err != nil {
@@ -201,8 +252,18 @@ func (r *PostgresTodoRepository) Update(ctx context.Context, id string, title st
 		)
 	}
 
+	userEmail, err := getUserEmail(
+		ctx,
+		tx,
+		todo.UserID,
+	)
+	if err != nil {
+		return nil, err
+	}
+
 	event, err := newTodoOutboxEvent(
 		todo,
+		userEmail,
 		model.OutboxEventTodoUpdated,
 	)
 	if err != nil {
@@ -271,8 +332,18 @@ func (r *PostgresTodoRepository) Delete(
 		)
 	}
 
+	userEmail, err := getUserEmail(
+		ctx,
+		tx,
+		todo.UserID,
+	)
+	if err != nil {
+		return nil, err
+	}
+
 	event, err := newTodoOutboxEvent(
 		todo,
+		userEmail,
 		model.OutboxEventTodoDeleted,
 	)
 	if err != nil {
