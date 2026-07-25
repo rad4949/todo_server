@@ -2,6 +2,7 @@ package config
 
 import (
 	"os"
+	"time"
 
 	"github.com/caarlos0/env/v11"
 	"github.com/joho/godotenv"
@@ -24,6 +25,16 @@ type Config struct {
 	RedisPort string `env:"REDIS_PORT" envDefault:"6379"`
 
 	GRPCPort string `env:"GRPC_PORT" envDefault:"50051"`
+
+	KafkaBrokers []string `env:"KAFKA_BROKERS" envSeparator:"," envDefault:"localhost:9092"`
+	KafkaTopic   string   `env:"KAFKA_TOPIC" envDefault:"todo.events.v2"`
+
+	OutboxWorkerID       string        `env:"OUTBOX_WORKER_ID" envDefault:"todo-worker-1"`
+	OutboxBatchSize      int           `env:"OUTBOX_BATCH_SIZE" envDefault:"10"`
+	OutboxPollInterval   time.Duration `env:"OUTBOX_POLL_INTERVAL" envDefault:"2s"`
+	OutboxLockTimeout    time.Duration `env:"OUTBOX_LOCK_TIMEOUT" envDefault:"1m"`
+	OutboxMaxAttempts    int           `env:"OUTBOX_MAX_ATTEMPTS" envDefault:"5"`
+	OutboxRetryBaseDelay time.Duration `env:"OUTBOX_RETRY_BASE_DELAY" envDefault:"5s"`
 }
 
 func Load() (*Config, error) {
