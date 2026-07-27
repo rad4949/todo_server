@@ -2,8 +2,8 @@ package grpchandler
 
 import (
 	"context"
-	"strings"
 	"io"
+	"strings"
 
 	todov1 "todo_server/internal/gen/todo/v1"
 	"todo_server/internal/model"
@@ -14,11 +14,11 @@ import (
 )
 
 type TodoService interface {
-	Create(title string, userID *string) (model.Todo, error)
-	GetByID(id string) (*model.Todo, error)
-	GetAll() []model.Todo
-	Update(id string, title string, completed bool) (*model.Todo, error)
-	Delete(id string) error
+	Create(ctx context.Context, title string, userID *string) (model.Todo, error)
+	GetByID(ctx context.Context, id string) (*model.Todo, error)
+	GetAll(ctx context.Context) ([]model.Todo, error)
+	Update(ctx context.Context, id string, title string, completed bool) (*model.Todo, error)
+	Delete(ctx context.Context, id string) (*model.Todo, error)
 }
 
 type TodoHandler struct {
@@ -46,7 +46,7 @@ func (h *TodoHandler) CreateTodo(
 		return nil, status.Error(codes.Unauthenticated, "unauthenticated")
 	}
 
-	todo, err := h.service.Create(title, &userID)
+	todo, err := h.service.Create(ctx, title, &userID)
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
@@ -65,7 +65,7 @@ func (h *TodoHandler) GetTodo(
 		return nil, status.Error(codes.InvalidArgument, "id is required")
 	}
 
-	todo, err := h.service.GetByID(id)
+	todo, err := h.service.GetByID(ctx, id)
 	if err != nil {
 		return nil, status.Error(codes.NotFound, err.Error())
 	}
@@ -79,7 +79,10 @@ func (h *TodoHandler) ListTodos(
 	ctx context.Context,
 	req *todov1.ListTodosRequest,
 ) (*todov1.ListTodosResponse, error) {
-	todos := h.service.GetAll()
+	todos, err := h.service.GetAll(ctx)
+	if err != nil {
+		return nil, status.Error(codes.Internal, err.Error())
+	}
 
 	protoTodos := make([]*todov1.Todo, 0, len(todos))
 	for _, todo := range todos {
@@ -106,7 +109,7 @@ func (h *TodoHandler) UpdateTodo(
 		return nil, status.Error(codes.InvalidArgument, "title is required")
 	}
 
-	todo, err := h.service.Update(id, title, req.GetCompleted())
+	todo, err := h.service.Update(ctx, id, title, req.GetCompleted())
 	if err != nil {
 		return nil, status.Error(codes.NotFound, err.Error())
 	}
@@ -125,7 +128,7 @@ func (h *TodoHandler) DeleteTodo(
 		return nil, status.Error(codes.InvalidArgument, "id is required")
 	}
 
-	if err := h.service.Delete(id); err != nil {
+	if _, err := h.service.Delete(ctx, id); err != nil {
 		return nil, status.Error(codes.NotFound, err.Error())
 	}
 
@@ -138,7 +141,10 @@ func (h *TodoHandler) WatchTodos(
 	req *todov1.WatchTodosRequest,
 	stream todov1.TodoService_WatchTodosServer,
 ) error {
-	todos := h.service.GetAll()
+	todos, err := h.service.GetAll(stream.Context())
+	if err != nil {
+		return status.Error(codes.Internal, err.Error())
+	}
 
 	for _, todo := range todos {
 		event := &todov1.TodoEvent{
@@ -157,7 +163,8 @@ func (h *TodoHandler) WatchTodos(
 func (h *TodoHandler) BulkCreateTodos(
 	stream todov1.TodoService_BulkCreateTodosServer,
 ) error {
-	userID, ok := interceptors.UserIDFromContext(stream.Context())
+	ctx := stream.Context()
+	userID, ok := interceptors.UserIDFromContext(ctx)
 	if !ok {
 		return status.Error(codes.Unauthenticated, "unauthenticated")
 	}
@@ -182,7 +189,7 @@ func (h *TodoHandler) BulkCreateTodos(
 			return status.Error(codes.InvalidArgument, "title is required")
 		}
 
-		todo, err := h.service.Create(title, &userID)
+		todo, err := h.service.Create(stream.Context(), title, &userID)
 		if err != nil {
 			return status.Error(codes.Internal, err.Error())
 		}
@@ -194,7 +201,8 @@ func (h *TodoHandler) BulkCreateTodos(
 func (h *TodoHandler) SyncTodos(
 	stream todov1.TodoService_SyncTodosServer,
 ) error {
-	userID, ok := interceptors.UserIDFromContext(stream.Context())
+	ctx := stream.Context()
+	userID, ok := interceptors.UserIDFromContext(ctx)
 	if !ok {
 		return status.Error(codes.Unauthenticated, "unauthenticated")
 	}
@@ -224,7 +232,7 @@ func (h *TodoHandler) SyncTodos(
 				continue
 			}
 
-			todo, err := h.service.Create(title, &userID)
+			todo, err := h.service.Create(stream.Context(), title, &userID)
 			if err != nil {
 				if err := stream.Send(&todov1.TodoSyncEvent{
 					Type:  "ERROR",

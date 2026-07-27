@@ -24,7 +24,7 @@ type fakeTodoService struct {
 	deleteFunc  func(id string) error
 }
 
-func (f *fakeTodoService) Create(title string, userID *string) (model.Todo, error) {
+func (f *fakeTodoService) Create(_ context.Context, title string, userID *string) (model.Todo, error) {
 	if f.createFunc != nil {
 		return f.createFunc(title, userID)
 	}
@@ -32,7 +32,7 @@ func (f *fakeTodoService) Create(title string, userID *string) (model.Todo, erro
 	return model.Todo{}, nil
 }
 
-func (f *fakeTodoService) GetByID(id string) (*model.Todo, error) {
+func (f *fakeTodoService) GetByID(_ context.Context, id string) (*model.Todo, error) {
 	if f.getByIDFunc != nil {
 		return f.getByIDFunc(id)
 	}
@@ -40,15 +40,15 @@ func (f *fakeTodoService) GetByID(id string) (*model.Todo, error) {
 	return nil, errors.New("not found")
 }
 
-func (f *fakeTodoService) GetAll() []model.Todo {
+func (f *fakeTodoService) GetAll(_ context.Context) ([]model.Todo, error) {
 	if f.getAllFunc != nil {
-		return f.getAllFunc()
+		return f.getAllFunc(), nil
 	}
 
-	return []model.Todo{}
+	return []model.Todo{}, nil
 }
 
-func (f *fakeTodoService) Update(id string, title string, completed bool) (*model.Todo, error) {
+func (f *fakeTodoService) Update(_ context.Context, id string, title string, completed bool) (*model.Todo, error) {
 	if f.updateFunc != nil {
 		return f.updateFunc(id, title, completed)
 	}
@@ -56,12 +56,14 @@ func (f *fakeTodoService) Update(id string, title string, completed bool) (*mode
 	return nil, errors.New("not found")
 }
 
-func (f *fakeTodoService) Delete(id string) error {
+func (f *fakeTodoService) Delete(_ context.Context, id string) (*model.Todo, error) {
 	if f.deleteFunc != nil {
-		return f.deleteFunc(id)
+		if err := f.deleteFunc(id); err != nil {
+			return nil, err
+		}
 	}
 
-	return nil
+	return &model.Todo{ID: id}, nil
 }
 
 type testServerStream struct {

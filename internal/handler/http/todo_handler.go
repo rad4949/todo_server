@@ -18,7 +18,7 @@ func NewTodoHandler(service *service.TodoService) *TodoHandler {
 }
 
 type CreateTodoRequest struct {
-	Title  string  `json:"title"`
+	Title string `json:"title"`
 }
 
 type UpdateTodoRequest struct {
@@ -67,7 +67,11 @@ func (h *TodoHandler) Hello(w http.ResponseWriter, r *http.Request) {
 // @Success 200 {array} models.Todo
 // @Router /todos [get]
 func (h *TodoHandler) GetTodos(w http.ResponseWriter, r *http.Request) {
-	todos := h.Service.GetAll()
+	todos, err := h.Service.GetAll(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
 	writeJSON(w, http.StatusOK, todos)
 }
 
@@ -103,7 +107,7 @@ func (h *TodoHandler) CreateTodo(w http.ResponseWriter, r *http.Request) {
 		userIDPtr = &userID
 	}
 
-	todo, err := h.Service.Create(req.Title, userIDPtr) // ← передаємо userID
+	todo, err := h.Service.Create(r.Context(), req.Title, userIDPtr)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -129,7 +133,7 @@ func (h *TodoHandler) GetTodoByID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	todo, err := h.Service.GetByID(id)
+	todo, err := h.Service.GetByID(r.Context(), id)
 	if err != nil {
 		writeError(w, http.StatusNotFound, err.Error())
 		return
@@ -171,7 +175,7 @@ func (h *TodoHandler) UpdateTodo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	todo, err := h.Service.Update(id, req.Title, req.Completed)
+	todo, err := h.Service.Update(r.Context(), id, req.Title, req.Completed)
 	if err != nil {
 		writeError(w, http.StatusNotFound, err.Error())
 		return
@@ -197,7 +201,7 @@ func (h *TodoHandler) DeleteTodo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = h.Service.Delete(id)
+	_, err = h.Service.Delete(r.Context(), id)
 	if err != nil {
 		writeError(w, http.StatusNotFound, err.Error())
 		return

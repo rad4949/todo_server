@@ -24,6 +24,90 @@ services:
     ports:
       - "6379:6379"
 
+  kafka:
+    image: apache/kafka:4.3.1
+    container_name: todo-kafka
+    hostname: kafka
+    restart: unless-stopped
+
+    ports:
+      - "9092:9092"
+
+    volumes:
+      - kafka_data:/var/lib/kafka/data
+
+    environment:
+      KAFKA_NODE_ID: 1
+
+      KAFKA_PROCESS_ROLES: "broker,controller"
+
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: "CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT"
+
+      KAFKA_LISTENERS: "CONTROLLER://:29093,PLAINTEXT://:19092,PLAINTEXT_HOST://:9092"
+
+      KAFKA_ADVERTISED_LISTENERS: "PLAINTEXT://kafka:19092,PLAINTEXT_HOST://localhost:9092"
+
+      KAFKA_INTER_BROKER_LISTENER_NAME: "PLAINTEXT"
+
+      KAFKA_CONTROLLER_LISTENER_NAMES: "CONTROLLER"
+
+      KAFKA_CONTROLLER_QUORUM_VOTERS: "1@kafka:29093"
+
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+
+      KAFKA_SHARE_COORDINATOR_STATE_TOPIC_REPLICATION_FACTOR: 1
+
+      KAFKA_SHARE_COORDINATOR_STATE_TOPIC_MIN_ISR: 1
+
+      KAFKA_LOG_DIRS: "/var/lib/kafka/data"
+
+      CLUSTER_ID: "4L6g3nShT-eMCtK--X86sw"
+
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:19092 >/dev/null 2>&1",
+        ]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+      start_period: 20s
+  
+  kafka-init:
+    image: apache/kafka:4.3.1
+    container_name: todo-kafka-init
+    restart: "no"
+
+    depends_on:
+      kafka:
+        condition: service_healthy
+
+    entrypoint:
+      - /bin/bash
+      - -c
+
+    command:
+      - |
+        /opt/kafka/bin/kafka-topics.sh \
+          --create \
+          --if-not-exists \
+          --topic todo.events.v2 \
+          --bootstrap-server kafka:19092 \
+          --partitions 1 \
+          --replication-factor 1
+
+        /opt/kafka/bin/kafka-topics.sh \
+          --describe \
+          --topic todo.events.v2 \
+          --bootstrap-server kafka:19092
+
   migrator:
     image: migrate/migrate:v4.18.1
     container_name: todo-migrator
@@ -47,15 +131,63 @@ services:
         condition: service_healthy
       migrator:
         condition: service_completed_successfully
+      kafka:
+        condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
+
     env_file:
       - .env
     environment:
       DB_HOST: db
       DB_PORT: 5432
+      KAFKA_BROKERS: kafka:19092
+      KAFKA_TOPIC: todo.events.v2
+      KAFKA_DELIVERY_TIMEOUT: 10s
+      KAFKA_CONSUMER_GROUP: todo-notification-v1
+      KAFKA_CONSUMER_ID: todo-notification-consumer
+      KAFKA_CONSUMER_BATCH_SIZE: "10"
+      OUTBOX_WORKER_ID: todo-worker-1
+      OUTBOX_BATCH_SIZE: 10
+      OUTBOX_POLL_INTERVAL: 2s
+      OUTBOX_LOCK_TIMEOUT: 1m
+      OUTBOX_MAX_ATTEMPTS: 5
+      OUTBOX_RETRY_BASE_DELAY: 5s
     ports:
       - "${SERVER_PORT}:8080"
       - "${GRPC_PORT}:50051"
+  
+  notification:
+    build: .
+    container_name: todo-notification
+    command: ["./notification"]
+    restart: unless-stopped
+
+    depends_on:
+      db:
+        condition: service_healthy
+      migrator:
+        condition: service_completed_successfully
+      kafka:
+        condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
+
+    env_file:
+      - .env
+
+    environment:
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_SSLMODE: disable
+
+      KAFKA_BROKERS: kafka:19092
+      KAFKA_TOPIC: todo.events.v2
+      KAFKA_CONSUMER_GROUP: todo-notification-v1
+      KAFKA_CONSUMER_ID: todo-notification-consumer
+      KAFKA_CONSUMER_BATCH_SIZE: "10"
 
 volumes:
   db_docker_todo_data:
     external: true
+  kafka_data:
