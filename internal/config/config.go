@@ -39,6 +39,14 @@ type Config struct {
 	OutboxLockTimeout    time.Duration `env:"OUTBOX_LOCK_TIMEOUT" envDefault:"1m"`
 	OutboxMaxAttempts    int           `env:"OUTBOX_MAX_ATTEMPTS" envDefault:"5"`
 	OutboxRetryBaseDelay time.Duration `env:"OUTBOX_RETRY_BASE_DELAY" envDefault:"5s"`
+
+	SMTPHost     string        `env:"SMTP_HOST" envDefault:"smtp.gmail.com"`
+	SMTPPort     int           `env:"SMTP_PORT" envDefault:"587"`
+	SMTPUsername string        `env:"SMTP_USERNAME"`
+	SMTPPassword string        `env:"SMTP_PASSWORD"`
+	SMTPFrom     string        `env:"SMTP_FROM"`
+	SMTPFromName string        `env:"SMTP_FROM_NAME" envDefault:"Todo Notifications"`
+	SMTPTimeout  time.Duration `env:"SMTP_TIMEOUT" envDefault:"15s"`
 }
 
 func Load() (*Config, error) {

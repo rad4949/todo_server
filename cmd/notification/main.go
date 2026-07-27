@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"log/slog"
 	"os"
@@ -11,6 +12,9 @@ import (
 
 	"todo_server/internal/config"
 	"todo_server/internal/notification"
+	"todo_server/internal/repository"
+
+	_ "github.com/lib/pq"
 )
 
 func main() {
@@ -43,12 +47,63 @@ func run() error {
 		),
 	)
 
-	handler, err := notification.NewLoggingHandler(
+	db, err := openPostgres(cfg)
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+
+	logger.Info(
+		"notification service connected to PostgreSQL",
+		"host",
+		cfg.DBHost,
+		"port",
+		cfg.DBPort,
+		"database",
+		cfg.DBName,
+	)
+
+	deliveryRepository :=
+		repository.NewPostgresNotificationDeliveryRepository(db)
+
+	smtpSender, err := notification.NewSMTPSender(
+		notification.SMTPConfig{
+			Host:     cfg.SMTPHost,
+			Port:     cfg.SMTPPort,
+			Username: cfg.SMTPUsername,
+			Password: cfg.SMTPPassword,
+			From:     cfg.SMTPFrom,
+			FromName: cfg.SMTPFromName,
+			Timeout:  cfg.SMTPTimeout,
+		},
+	)
+	if err != nil {
+		return fmt.Errorf(
+			"create SMTP sender: %w",
+			err,
+		)
+	}
+
+	emailHandler, err := notification.NewEmailHandler(
+		smtpSender,
 		logger,
 	)
 	if err != nil {
 		return fmt.Errorf(
-			"create notification handler: %w",
+			"create email notification handler: %w",
+			err,
+		)
+	}
+
+	idempotentEmailHandler, err :=
+		notification.NewIdempotentEmailHandler(
+			emailHandler,
+			deliveryRepository,
+			logger,
+		)
+	if err != nil {
+		return fmt.Errorf(
+			"create idempotent email handler: %w",
 			err,
 		)
 	}
@@ -61,7 +116,7 @@ func run() error {
 			ClientID:  cfg.KafkaConsumerID,
 			BatchSize: cfg.KafkaConsumerBatchSize,
 		},
-		handler,
+		idempotentEmailHandler,
 	)
 	if err != nil {
 		return fmt.Errorf(
@@ -123,4 +178,46 @@ func run() error {
 	)
 
 	return nil
+}
+
+func openPostgres(
+	cfg *config.Config,
+) (*sql.DB, error) {
+	connectionString := fmt.Sprintf(
+		"host=%s port=%s user=%s password=%s dbname=%s sslmode=%s",
+		cfg.DBHost,
+		cfg.DBPort,
+		cfg.DBUser,
+		cfg.DBPassword,
+		cfg.DBName,
+		cfg.DBSSLMode,
+	)
+
+	db, err := sql.Open(
+		"postgres",
+		connectionString,
+	)
+	if err != nil {
+		return nil, fmt.Errorf(
+			"open notification PostgreSQL connection: %w",
+			err,
+		)
+	}
+
+	pingCtx, cancelPing := context.WithTimeout(
+		context.Background(),
+		10*time.Second,
+	)
+	defer cancelPing()
+
+	if err := db.PingContext(pingCtx); err != nil {
+		db.Close()
+
+		return nil, fmt.Errorf(
+			"connect notification service to PostgreSQL: %w",
+			err,
+		)
+	}
+
+	return db, nil
 }

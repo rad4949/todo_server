@@ -33,6 +33,9 @@ services:
     ports:
       - "9092:9092"
 
+    volumes:
+      - kafka_data:/var/lib/kafka/data
+
     environment:
       KAFKA_NODE_ID: 1
 
@@ -62,10 +65,10 @@ services:
 
       KAFKA_SHARE_COORDINATOR_STATE_TOPIC_MIN_ISR: 1
 
-      KAFKA_LOG_DIRS: "/tmp/kraft-combined-logs"
+      KAFKA_LOG_DIRS: "/var/lib/kafka/data"
 
       CLUSTER_ID: "4L6g3nShT-eMCtK--X86sw"
-    
+
     healthcheck:
       test:
         [
@@ -76,6 +79,34 @@ services:
       timeout: 10s
       retries: 10
       start_period: 20s
+  
+  kafka-init:
+    image: apache/kafka:4.3.1
+    container_name: todo-kafka-init
+    restart: "no"
+
+    depends_on:
+      kafka:
+        condition: service_healthy
+
+    entrypoint:
+      - /bin/bash
+      - -c
+
+    command:
+      - |
+        /opt/kafka/bin/kafka-topics.sh \
+          --create \
+          --if-not-exists \
+          --topic todo.events.v2 \
+          --bootstrap-server kafka:19092 \
+          --partitions 1 \
+          --replication-factor 1
+
+        /opt/kafka/bin/kafka-topics.sh \
+          --describe \
+          --topic todo.events.v2 \
+          --bootstrap-server kafka:19092
 
   migrator:
     image: migrate/migrate:v4.18.1
@@ -102,6 +133,9 @@ services:
         condition: service_completed_successfully
       kafka:
         condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
+
     env_file:
       - .env
     environment:
@@ -130,13 +164,23 @@ services:
     restart: unless-stopped
 
     depends_on:
+      db:
+        condition: service_healthy
+      migrator:
+        condition: service_completed_successfully
       kafka:
         condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
 
     env_file:
       - .env
 
     environment:
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_SSLMODE: disable
+
       KAFKA_BROKERS: kafka:19092
       KAFKA_TOPIC: todo.events.v2
       KAFKA_CONSUMER_GROUP: todo-notification-v1
@@ -146,3 +190,4 @@ services:
 volumes:
   db_docker_todo_data:
     external: true
+  kafka_data:

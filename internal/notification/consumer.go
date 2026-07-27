@@ -44,7 +44,7 @@ type Consumer struct {
 
 func NewConsumer(
 	config ConsumerConfig,
-	handler Handler,
+	emailHandler Handler,
 ) (*Consumer, error) {
 	if len(config.Brokers) == 0 {
 		return nil, fmt.Errorf(
@@ -76,7 +76,7 @@ func NewConsumer(
 		)
 	}
 
-	if handler == nil {
+	if emailHandler == nil {
 		return nil, fmt.Errorf(
 			"create notification consumer: handler is required",
 		)
@@ -101,7 +101,7 @@ func NewConsumer(
 
 	return &Consumer{
 		client:    client,
-		handler:   handler,
+		handler:   emailHandler,
 		batchSize: config.BatchSize,
 	}, nil
 }
