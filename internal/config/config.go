@@ -26,9 +26,12 @@ type Config struct {
 
 	GRPCPort string `env:"GRPC_PORT" envDefault:"50051"`
 
-	KafkaBrokers []string `env:"KAFKA_BROKERS" envSeparator:"," envDefault:"localhost:9092"`
-	KafkaTopic   string   `env:"KAFKA_TOPIC" envDefault:"todo.events.v2"`
-	KafkaDeliveryTimeout time.Duration `env:"KAFKA_DELIVERY_TIMEOUT" envDefault:"10s"`
+	KafkaBrokers           []string      `env:"KAFKA_BROKERS" envSeparator:"," envDefault:"localhost:9092"`
+	KafkaTopic             string        `env:"KAFKA_TOPIC" envDefault:"todo.events.v2"`
+	KafkaDeliveryTimeout   time.Duration `env:"KAFKA_DELIVERY_TIMEOUT" envDefault:"10s"`
+	KafkaConsumerGroup     string        `env:"KAFKA_CONSUMER_GROUP" envDefault:"todo-notification-v1"`
+	KafkaConsumerID        string        `env:"KAFKA_CONSUMER_ID" envDefault:"todo-notification-consumer"`
+	KafkaConsumerBatchSize int           `env:"KAFKA_CONSUMER_BATCH_SIZE" envDefault:"10"`
 
 	OutboxWorkerID       string        `env:"OUTBOX_WORKER_ID" envDefault:"todo-worker-1"`
 	OutboxBatchSize      int           `env:"OUTBOX_BATCH_SIZE" envDefault:"10"`

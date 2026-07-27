@@ -110,6 +110,9 @@ services:
       KAFKA_BROKERS: kafka:19092
       KAFKA_TOPIC: todo.events.v2
       KAFKA_DELIVERY_TIMEOUT: 10s
+      KAFKA_CONSUMER_GROUP: todo-notification-v1
+      KAFKA_CONSUMER_ID: todo-notification-consumer
+      KAFKA_CONSUMER_BATCH_SIZE: "10"
       OUTBOX_WORKER_ID: todo-worker-1
       OUTBOX_BATCH_SIZE: 10
       OUTBOX_POLL_INTERVAL: 2s
@@ -119,6 +122,27 @@ services:
     ports:
       - "${SERVER_PORT}:8080"
       - "${GRPC_PORT}:50051"
+  
+  notification:
+    build: .
+    container_name: todo-notification
+    command: ["./notification"]
+    restart: unless-stopped
+
+    depends_on:
+      kafka:
+        condition: service_healthy
+
+    env_file:
+      - .env
+
+    environment:
+      KAFKA_BROKERS: kafka:19092
+      KAFKA_TOPIC: todo.events.v2
+      KAFKA_CONSUMER_GROUP: todo-notification-v1
+      KAFKA_CONSUMER_ID: todo-notification-consumer
+      KAFKA_CONSUMER_BATCH_SIZE: "10"
+
 volumes:
   db_docker_todo_data:
     external: true
